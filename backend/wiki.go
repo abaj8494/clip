@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,6 +35,21 @@ var templates = template.Must(template.ParseFiles("edit.html", "view.html", "ind
 var validPath = regexp.MustCompile("^/(edit|save|view|upload|delete|delete-file)/([a-zA-Z0-9-]+)$")
 var filesDir = "./files" // Directory to store uploaded files
 var persistentDir = "/app/persistence" // Directory to store persistent storage
+
+// Mutex map for thread-safe page operations
+var pageLocks = make(map[string]*sync.Mutex)
+var pageLocksMapMutex sync.Mutex
+
+// getPageLock returns a mutex for a specific page, creating it if necessary
+func getPageLock(pageName string) *sync.Mutex {
+	pageLocksMapMutex.Lock()
+	defer pageLocksMapMutex.Unlock()
+	
+	if pageLocks[pageName] == nil {
+		pageLocks[pageName] = &sync.Mutex{}
+	}
+	return pageLocks[pageName]
+}
 
 // enableCORS adds CORS headers to allow requests from the frontend
 func enableCORS(w http.ResponseWriter) {
@@ -144,6 +160,11 @@ func editHandler(w http.ResponseWriter, r *http.Request, title string) {
 }
 
 func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
+  // Lock this page for thread-safe operations
+  lock := getPageLock(title)
+  lock.Lock()
+  defer lock.Unlock()
+  
   /* closured;
   title, err := getTitle(w, r)
   if err != nil {
@@ -171,6 +192,11 @@ func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 
 // uploadHandler handles file uploads for a specific page
 func uploadHandler(w http.ResponseWriter, r *http.Request, title string) {
+  // Lock this page for thread-safe operations
+  lock := getPageLock(title)
+  lock.Lock()
+  defer lock.Unlock()
+  
   if r.Method != "POST" {
     http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
     return
@@ -288,9 +314,9 @@ func join(s []string, sep string) string {
 }
 
 func (p *Page) save() error {
-  filename := p.Title + ".txt"
+  filename := filepath.Join(persistentDir, p.Title + ".txt")
   
-  // Write page data
+  // Write page data to persistent directory
   err := os.WriteFile(filename, p.Body, 0600)
   if err != nil {
     return err
@@ -298,7 +324,7 @@ func (p *Page) save() error {
   
   // Write files list if there are any
   if len(p.Files) > 0 {
-    filesListFilename := p.Title + ".files.txt"
+    filesListFilename := filepath.Join(persistentDir, p.Title + ".files.txt")
     filesContent := join(p.Files, "\n")
     err = os.WriteFile(filesListFilename, []byte(filesContent), 0600)
     if err != nil {
@@ -310,24 +336,14 @@ func (p *Page) save() error {
 }
 
 func loadPage(title string) (*Page, error) {
-  filename := title + ".txt"
+  filename := filepath.Join(persistentDir, title + ".txt")
   body, err := os.ReadFile(filename)
   if err != nil {
-    // Try to restore from persistent storage if file not found
-    restoreErr := RestoreWikiFile(title)
-    if restoreErr == nil {
-      // Successfully restored, try reading again
-      body, err = os.ReadFile(filename)
-      if err != nil {
-        return nil, err
-      }
-    } else {
-      return nil, err
-    }
+    return nil, err
   }
   
   // Load files list if it exists
-  filesListFilename := title + ".files.txt"
+  filesListFilename := filepath.Join(persistentDir, title + ".files.txt")
   var files []string
   filesContent, err := os.ReadFile(filesListFilename)
   if err == nil && len(filesContent) > 0 {
@@ -338,8 +354,8 @@ func loadPage(title string) (*Page, error) {
 }
 
 func getAllPages() []string {
-  // Get all .txt files (wiki pages)
-  files, err := filepath.Glob("*.txt")
+  // Get all .txt files (wiki pages) from persistent directory
+  files, err := filepath.Glob(filepath.Join(persistentDir, "*.txt"))
   if err != nil {
     return []string{}
   }
@@ -361,7 +377,7 @@ func getAllPages() []string {
         continue
       }
       
-      title := strings.TrimSuffix(file, ".txt")
+      title := strings.TrimSuffix(filepath.Base(file), ".txt")
       fileInfos = append(fileInfos, fileInfo{
         name:    title,
         modTime: info.ModTime(),
@@ -389,7 +405,105 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
     return
   }
   
-  // Get all available pages
+  // Handle curl file uploads to root domain -> send to "unsorted"
+  if r.Method == "POST" {
+    // Parse multipart form
+    err := r.ParseMultipartForm(32 << 20) // 32MB max
+    if err != nil {
+      http.Error(w, "Error parsing form", http.StatusBadRequest)
+      return
+    }
+    
+    if r.MultipartForm != nil && len(r.MultipartForm.File) > 0 {
+      // Upload files to "unsorted" page
+      title := "unsorted"
+      
+      // Create the page directory if it doesn't exist
+      pageDirPath := filepath.Join(filesDir, title)
+      if err := os.MkdirAll(pageDirPath, 0755); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+      }
+      
+      // Also create in persistent storage
+      persistentPageDir := filepath.Join(persistentDir, "files", title)
+      if err := os.MkdirAll(persistentPageDir, 0755); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+      }
+      
+      var uploadedFiles []string
+      
+      // Process all file fields
+      for _, fileHeaders := range r.MultipartForm.File {
+        for _, fileHeader := range fileHeaders {
+          // Open uploaded file
+          file, err := fileHeader.Open()
+          if err != nil {
+            log.Printf("Error opening file: %v", err)
+            continue
+          }
+          defer file.Close()
+          
+          // Create destination file
+          destPath := filepath.Join(pageDirPath, fileHeader.Filename)
+          dest, err := os.Create(destPath)
+          if err != nil {
+            log.Printf("Error creating file: %v", err)
+            continue
+          }
+          defer dest.Close()
+          
+          // Copy file
+          if _, err := io.Copy(dest, file); err != nil {
+            log.Printf("Error saving file: %v", err)
+            continue
+          }
+          
+          uploadedFiles = append(uploadedFiles, fileHeader.Filename)
+          log.Printf("Uploaded %s to unsorted", fileHeader.Filename)
+        }
+      }
+      
+      if len(uploadedFiles) > 0 {
+        // Load existing page or create new one
+        p, err := loadPage(title)
+        if err != nil {
+          p = &Page{Title: title, Body: []byte(""), Files: []string{}}
+        }
+        
+        // Add new files to existing files list
+        existingFiles := make(map[string]bool)
+        for _, f := range p.Files {
+          existingFiles[f] = true
+        }
+        
+        for _, f := range uploadedFiles {
+          if !existingFiles[f] {
+            p.Files = append(p.Files, f)
+          }
+        }
+        
+        // Save page with updated file list
+        if err := p.save(); err != nil {
+          log.Printf("Error saving page: %v", err)
+        }
+        
+        // Trigger backup
+        go BackupWikiFiles()
+        
+        w.WriteHeader(http.StatusOK)
+        if len(uploadedFiles) == 1 {
+          fmt.Fprintf(w, "File uploaded to unsorted: %s\n", uploadedFiles[0])
+        } else {
+          fmt.Fprintf(w, "%d files uploaded to unsorted\n", len(uploadedFiles))
+        }
+        return
+      }
+    }
+  }
+  
+  // Default GET behavior - show index
   pages := getAllPages()
   indexPage := &IndexPage{Pages: pages}
   
@@ -401,6 +515,11 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 
 // deleteHandler handles the deletion of a wiki page
 func deleteHandler(w http.ResponseWriter, r *http.Request, title string) {
+	// Lock this page for thread-safe operations
+	lock := getPageLock(title)
+	lock.Lock()
+	defer lock.Unlock()
+	
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -440,6 +559,11 @@ func deleteHandler(w http.ResponseWriter, r *http.Request, title string) {
 
 // deleteFileHandler handles the deletion of a specific file attachment
 func deleteFileHandler(w http.ResponseWriter, r *http.Request, title string) {
+	// Lock this page for thread-safe operations
+	lock := getPageLock(title)
+	lock.Lock()
+	defer lock.Unlock()
+	
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -486,6 +610,82 @@ func deleteFileHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
+// photosUploadHandler handles photo uploads
+func photosUploadHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	// Parse multipart form (32MB max memory)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+	
+	photosDir := filepath.Join(persistentDir, "photos")
+	if err := os.MkdirAll(photosDir, 0755); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		http.Error(w, "No files provided", http.StatusBadRequest)
+		return
+	}
+	
+	uploadedCount := 0
+	for _, fileHeader := range files {
+		// Validate file type
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		validExtensions := map[string]bool{
+			".jpg": true, ".jpeg": true, ".png": true,
+			".gif": true, ".webp": true,
+		}
+		
+		if !validExtensions[ext] {
+			continue // Skip non-image files
+		}
+		
+		// Open uploaded file
+		file, err := fileHeader.Open()
+		if err != nil {
+			log.Printf("Error opening uploaded file: %v", err)
+			continue
+		}
+		defer file.Close()
+		
+		// Create destination file
+		destPath := filepath.Join(photosDir, fileHeader.Filename)
+		dest, err := os.Create(destPath)
+		if err != nil {
+			log.Printf("Error creating destination file: %v", err)
+			continue
+		}
+		defer dest.Close()
+		
+		// Copy file
+		if _, err := io.Copy(dest, file); err != nil {
+			log.Printf("Error saving file: %v", err)
+			continue
+		}
+		
+		uploadedCount++
+		log.Printf("Uploaded photo: %s", fileHeader.Filename)
+	}
+	
+	if uploadedCount == 0 {
+		http.Error(w, "No valid image files uploaded", http.StatusBadRequest)
+		return
+	}
+	
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Successfully uploaded %d file(s)", uploadedCount)
+}
+
 // photosPageHandler serves the photos.html page
 func photosPageHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "./photos.html")
@@ -494,7 +694,7 @@ func photosPageHandler(w http.ResponseWriter, r *http.Request) {
 // photosListHandler returns a JSON list of all images in the photos directory
 func photosListHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
-	photosDir := "./photos"
+	photosDir := filepath.Join(persistentDir, "photos")
 	
 	// Create photos directory if it doesn't exist
 	if err := os.MkdirAll(photosDir, 0755); err != nil {
@@ -553,7 +753,7 @@ func photosDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// Delete files
-	photosDir := "./photos"
+	photosDir := filepath.Join(persistentDir, "photos")
 	for _, filename := range req.Files {
 		// Security: prevent path traversal
 		if strings.Contains(filename, "..") || strings.Contains(filename, "/") {
@@ -577,8 +777,8 @@ func main() {
     log.Fatal(err)
   }
   
-  // Create photos directory if it doesn't exist
-  photosDir := "./photos"
+  // Create photos directory in persistent storage if it doesn't exist
+  photosDir := filepath.Join(persistentDir, "photos")
   if err := os.MkdirAll(photosDir, 0755); err != nil {
     log.Fatal(err)
   }
@@ -594,7 +794,7 @@ func main() {
   iconServer := http.FileServer(http.Dir("./icon"))
   http.Handle("/icon/", http.StripPrefix("/icon/", corsMiddleware(iconServer)))
   
-  // Set up static file server for photos
+  // Set up static file server for photos (from persistent storage)
   photosFileServer := http.FileServer(http.Dir(photosDir))
   http.Handle("/photos/", http.StripPrefix("/photos/", corsMiddleware(photosFileServer)))
   
@@ -609,6 +809,7 @@ func main() {
   // API endpoints
   http.HandleFunc("/api/page", apiGetPageHandler)
   http.HandleFunc("/api/photos/list", photosListHandler)
+  http.HandleFunc("/api/photos/upload", photosUploadHandler)
   http.HandleFunc("/api/photos/delete", photosDeleteHandler)
 
   // Photos page

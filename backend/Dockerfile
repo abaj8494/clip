@@ -7,7 +7,7 @@ RUN echo "Rebuild timestamp: $(date)"
 
 # Copy source code
 COPY wiki.go backup.go ./
-COPY edit.html view.html index.html ./
+COPY edit.html view.html index.html photos.html ./
 COPY icon/ ./icon/
 
 # Initialize a Go module and build the application
@@ -23,6 +23,7 @@ COPY --from=builder /app/clip /app/clip
 COPY --from=builder /app/edit.html /app/edit.html
 COPY --from=builder /app/view.html /app/view.html
 COPY --from=builder /app/index.html /app/index.html
+COPY --from=builder /app/photos.html /app/photos.html
 COPY --from=builder /app/icon/ /app/icon/
 
 # Create directories

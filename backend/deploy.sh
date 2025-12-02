@@ -23,9 +23,9 @@ chmod 755 /var/www/clip/persistence
 
 # Build and start the container
 echo 'Building and starting clip container...'
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 
 echo 'Deployment complete!'
 echo 'Your clip should be running at http://<your-server-ip>:21313'

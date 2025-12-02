@@ -60,6 +60,26 @@
             background: #0056b3;
         }
         
+        .btn-download {
+            background: #28a745;
+        }
+        
+        .btn-download:hover {
+            background: #218838;
+        }
+        
+        .btn-upload {
+            background: #17a2b8;
+        }
+        
+        .btn-upload:hover {
+            background: #138496;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
         .btn-admin {
             background: #6c757d;
         }
@@ -290,13 +310,19 @@
 <body>
     <h1>Photos</h1>
     
+    <div style="margin-bottom: 15px;">
+        <a href="/" style="text-decoration: none; color: #0366d6;">Home</a>
+    </div>
+    
     <div class="count" id="count"></div>
     
     <div class="controls">
         <label for="search">Filter:</label>
         <input type="text" id="search" placeholder="Search filenames...">
         
-        <button class="btn" id="downloadAllBtn">Download All</button>
+        <input type="file" id="fileInput" multiple accept="image/*">
+        <button class="btn btn-upload" id="uploadBtn">Upload</button>
+        <button class="btn btn-download" id="downloadAllBtn">Download All</button>
         <button class="btn btn-admin" id="adminBtn">Admin</button>
         
         <div class="admin-controls">
@@ -311,7 +337,7 @@
     <!-- Preview Overlay -->
     <div class="preview-overlay" id="previewOverlay">
         <button class="preview-close" id="previewClose">✕</button>
-        <button class="preview-download btn" id="previewDownload">Download</button>
+        <button class="preview-download btn btn-download" id="previewDownload">Download</button>
         <div class="preview-content">
             <img id="previewImage" src="" alt="Preview">
         </div>
@@ -337,6 +363,8 @@
         const loading = document.getElementById('loading');
         const searchInput = document.getElementById('search');
         const countEl = document.getElementById('count');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
         const downloadAllBtn = document.getElementById('downloadAllBtn');
         const adminBtn = document.getElementById('adminBtn');
         const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
@@ -354,8 +382,13 @@
         
         let allImages = [];
         let filteredImages = [];
-        let isAdminMode = false;
+        let isAdminMode = localStorage.getItem('clipAdminMode') === 'true';
         let currentPreviewImage = '';
+        
+        // Restore admin state from localStorage
+        if (isAdminMode) {
+            document.body.classList.add('admin-mode');
+        }
         
         // Fetch images from server
         async function fetchImages() {
@@ -468,6 +501,46 @@
             link.click();
         };
         
+        // Upload functionality
+        uploadBtn.onclick = () => {
+            fileInput.click();
+        };
+        
+        fileInput.onchange = async (e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = `Uploading ${files.length} file(s)...`;
+            
+            try {
+                const formData = new FormData();
+                for (let file of files) {
+                    formData.append('files', file);
+                }
+                
+                const response = await fetch('/api/photos/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    alert(`${files.length} file(s) uploaded successfully!`);
+                    fetchImages(); // Refresh gallery
+                } else {
+                    const error = await response.text();
+                    alert('Upload failed: ' + error);
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Upload failed: ' + error.message);
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload';
+                fileInput.value = ''; // Reset file input
+            }
+        };
+        
         // Download all functionality
         downloadAllBtn.onclick = async () => {
             if (allImages.length === 0) {
@@ -518,8 +591,10 @@
             const username = usernameInput.value;
             const password = passwordInput.value;
             
-            if (username === 'aj' && password === 'red') {
+            if ((username === 'aj' && password === 'red') || 
+                (username === 'kiyo' && password === 'blue')) {
                 isAdminMode = true;
+                localStorage.setItem('clipAdminMode', 'true');
                 document.body.classList.add('admin-mode');
                 loginModal.classList.remove('active');
                 loginError.style.display = 'none';
@@ -537,6 +612,7 @@
         
         exitAdminBtn.onclick = () => {
             isAdminMode = false;
+            localStorage.removeItem('clipAdminMode');
             document.body.classList.remove('admin-mode');
             // Uncheck all checkboxes
             document.querySelectorAll('.image-checkbox').forEach(cb => {

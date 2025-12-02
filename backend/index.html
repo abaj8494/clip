@@ -75,6 +75,107 @@
             margin-bottom: 8px;
         }
         
+        .btn-admin {
+            background-color: #6c757d;
+        }
+        
+        .btn-admin:hover {
+            background-color: #545b62;
+        }
+        
+        .admin-section {
+            display: none;
+        }
+        
+        body.admin-mode .admin-section {
+            display: block;
+        }
+        
+        .login-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .login-modal.active {
+            display: flex;
+        }
+        
+        .login-form {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+            min-width: 300px;
+        }
+        
+        .login-form h2 {
+            margin-bottom: 20px;
+        }
+        
+        .login-form input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .login-form .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .login-form .button {
+            flex: 1;
+            margin: 0;
+        }
+        
+        .photos-preview {
+            margin-bottom: 30px;
+        }
+        
+        .photos-preview h2 {
+            margin-bottom: 15px;
+        }
+        
+        .photos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .photo-thumb {
+            width: 100%;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+        
+        .photo-thumb:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        .photos-link {
+            display: inline-block;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
         /* Responsive adjustments */
         @media (max-width: 600px) {
             body {
@@ -112,6 +213,11 @@
 <body>
     <h1>eywa</h1>
     
+    <div style="margin-bottom: 20px;">
+        <button class="button btn-admin" id="adminBtn">Admin</button>
+        <button class="button admin-section" id="exitAdminBtn">Exit Admin</button>
+    </div>
+    
     <div class="container">
         <div class="card">
             <h2>view</h2>
@@ -129,7 +235,13 @@
             </form>
         </div>
 
-        <div class="recent">
+        <div class="photos-preview admin-section">
+            <h2>photos</h2>
+            <a href="/photos" class="photos-link">View Gallery →</a>
+            <div class="photos-grid" id="photosGrid"></div>
+        </div>
+
+        <div class="recent admin-section">
             <h2>page/s list</h2>
             <ul>
                 {{if .Pages}}
@@ -145,16 +257,139 @@
         <div class="qr-section" style="text-align: center;">
             <div id="qrcode"></div>
         </div>
-    
-        <script>
-            window.onload = function() {
-                var pageUrl = window.location.href;
-                var qr = qrcode(0, 'M');
-                qr.addData(pageUrl);
-                qr.make();
-                document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
-            };
-        </script>
     </div>
+
+    <!-- Login Modal -->
+    <div class="login-modal" id="loginModal">
+        <div class="login-form">
+            <h2>Admin Login</h2>
+            <input type="text" id="username" placeholder="Username" autocomplete="username">
+            <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+            <div class="btn-group">
+                <button class="button" id="loginBtn">Login</button>
+                <button class="button btn-admin" id="cancelLoginBtn">Cancel</button>
+            </div>
+            <p id="loginError" style="color: red; margin-top: 10px; display: none;"></p>
+        </div>
+    </div>
+    
+    <script>
+        // Admin state management
+        let isAdminMode = localStorage.getItem('clipAdminMode') === 'true';
+        
+        // Restore admin state
+        if (isAdminMode) {
+            document.body.classList.add('admin-mode');
+        }
+        
+        // Admin button handlers
+        const adminBtn = document.getElementById('adminBtn');
+        const exitAdminBtn = document.getElementById('exitAdminBtn');
+        const loginModal = document.getElementById('loginModal');
+        const loginBtn = document.getElementById('loginBtn');
+        const cancelLoginBtn = document.getElementById('cancelLoginBtn');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const loginError = document.getElementById('loginError');
+        
+        adminBtn.onclick = () => {
+            loginModal.classList.add('active');
+            usernameInput.value = '';
+            passwordInput.value = '';
+            loginError.style.display = 'none';
+            usernameInput.focus();
+        };
+        
+        cancelLoginBtn.onclick = () => {
+            loginModal.classList.remove('active');
+        };
+        
+        loginBtn.onclick = () => {
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+            
+            if ((username === 'aj' && password === 'red') || 
+                (username === 'kiyo' && password === 'blue')) {
+                isAdminMode = true;
+                localStorage.setItem('clipAdminMode', 'true');
+                document.body.classList.add('admin-mode');
+                loginModal.classList.remove('active');
+                loginError.style.display = 'none';
+                loadPhotoThumbnails(); // Load photos after login
+            } else {
+                loginError.textContent = 'Invalid credentials';
+                loginError.style.display = 'block';
+            }
+        };
+        
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loginBtn.click();
+            }
+        });
+        
+        exitAdminBtn.onclick = () => {
+            isAdminMode = false;
+            localStorage.removeItem('clipAdminMode');
+            document.body.classList.remove('admin-mode');
+        };
+        
+        // Load photo thumbnails
+        async function loadPhotoThumbnails() {
+            if (!isAdminMode) return;
+            
+            try {
+                const response = await fetch('/api/photos/list');
+                const data = await response.json();
+                const images = data.images || [];
+                const photosGrid = document.getElementById('photosGrid');
+                
+                if (images.length === 0 || (images.length === 1 && images[0] === '')) {
+                    photosGrid.innerHTML = '<p style="color: #999; font-style: italic;">No photos yet</p>';
+                    return;
+                }
+                
+                // Display up to 8 thumbnails (reduced for performance)
+                const displayImages = images.filter(img => img).slice(0, 8);
+                photosGrid.innerHTML = '';
+                
+                displayImages.forEach(img => {
+                    const imgEl = document.createElement('img');
+                    imgEl.src = `/photos/${img}`;
+                    imgEl.alt = img;
+                    imgEl.className = 'photo-thumb';
+                    imgEl.title = img;
+                    imgEl.onclick = () => window.location.href = '/photos';
+                    // Add loading="lazy" for better performance
+                    imgEl.loading = 'lazy';
+                    // Constrain image dimensions in URL if possible, or use CSS
+                    imgEl.style.maxWidth = '100px';
+                    imgEl.style.maxHeight = '100px';
+                    photosGrid.appendChild(imgEl);
+                });
+                
+                if (images.length > 8) {
+                    const moreDiv = document.createElement('div');
+                    moreDiv.style.cssText = 'grid-column: 1/-1; text-align: center; color: #666; padding: 10px;';
+                    moreDiv.textContent = `+${images.length - 8} more photos`;
+                    photosGrid.appendChild(moreDiv);
+                }
+            } catch (error) {
+                console.error('Error loading photos:', error);
+            }
+        }
+        
+        // QR Code generation
+        window.onload = function() {
+            var pageUrl = window.location.href;
+            var qr = qrcode(0, 'M');
+            qr.addData(pageUrl);
+            qr.make();
+            document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
+            
+            // Load photos if admin mode is active
+            loadPhotoThumbnails();
+        };
+    </script>
 </body>
 </html> 

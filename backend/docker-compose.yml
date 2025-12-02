@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   clip:
     build: .
@@ -9,7 +7,7 @@ services:
       # Mount a volume for persistent data storage
       - clip-data:/app/files
       - clip-pages:/app/persistence
-      # Direct host mapping for development
+      # Direct host mapping for development (includes photos)
       - /var/www/clip/persistence:/app/persistence
 
 volumes:
