@@ -238,16 +238,53 @@
             top: 20px;
             right: 20px;
             padding: 10px 20px;
-            background: rgba(255, 255, 255, 0.9);
+            background: #28a745;
+            color: white;
             border: none;
             border-radius: 4px;
             font-size: 14px;
             cursor: pointer;
             z-index: 1001;
+            transition: background 0.2s;
         }
         
         .preview-download:hover {
+            background: #218838;
+        }
+        
+        .preview-arrow {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1001;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        
+        .preview-arrow:hover {
             background: white;
+        }
+        
+        .preview-arrow:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .preview-arrow-left {
+            left: 20px;
+        }
+        
+        .preview-arrow-right {
+            right: 20px;
         }
         
         .admin-controls {
@@ -338,6 +375,8 @@
     <div class="preview-overlay" id="previewOverlay">
         <button class="preview-close" id="previewClose">✕</button>
         <button class="preview-download btn btn-download" id="previewDownload">Download</button>
+        <button class="preview-arrow preview-arrow-left" id="previewPrev">‹</button>
+        <button class="preview-arrow preview-arrow-right" id="previewNext">›</button>
         <div class="preview-content">
             <img id="previewImage" src="" alt="Preview">
         </div>
@@ -482,6 +521,25 @@
             currentPreviewImage = filename;
             previewImage.src = `/photos/${filename}`;
             previewOverlay.classList.add('active');
+            updateArrowButtons();
+        }
+        
+        function updateArrowButtons() {
+            const currentIndex = filteredImages.indexOf(currentPreviewImage);
+            const prevBtn = document.getElementById('previewPrev');
+            const nextBtn = document.getElementById('previewNext');
+            
+            prevBtn.disabled = currentIndex <= 0;
+            nextBtn.disabled = currentIndex >= filteredImages.length - 1;
+        }
+        
+        function navigatePreview(direction) {
+            const currentIndex = filteredImages.indexOf(currentPreviewImage);
+            let newIndex = currentIndex + direction;
+            
+            if (newIndex >= 0 && newIndex < filteredImages.length) {
+                openPreview(filteredImages[newIndex]);
+            }
         }
         
         previewClose.onclick = () => {
@@ -493,6 +551,23 @@
                 previewOverlay.classList.remove('active');
             }
         };
+        
+        // Arrow button handlers
+        document.getElementById('previewPrev').onclick = () => navigatePreview(-1);
+        document.getElementById('previewNext').onclick = () => navigatePreview(1);
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (previewOverlay.classList.contains('active')) {
+                if (e.key === 'ArrowLeft') {
+                    navigatePreview(-1);
+                } else if (e.key === 'ArrowRight') {
+                    navigatePreview(1);
+                } else if (e.key === 'Escape') {
+                    previewOverlay.classList.remove('active');
+                }
+            }
+        });
         
         previewDownload.onclick = () => {
             const link = document.createElement('a');

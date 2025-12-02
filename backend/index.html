@@ -59,10 +59,12 @@
         }
         input[type="text"] {
             padding: 8px;
-            margin-right: 5px;
+            margin-right: 0;
+            margin-bottom: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            width: 200px;
+            width: 100%;
+            box-sizing: border-box;
         }
         .recent {
             margin-top: 40px;
@@ -223,7 +225,7 @@
             <h2>view</h2>
             <form onsubmit="return goToPage()">
                 <input type="text" id="pageName" placeholder="Enter page name" required>
-                <button type="submit" class="button">Go</button>
+                <button type="submit" class="button" style="width: 100%;">Go</button>
             </form>
         </div>
 
@@ -231,7 +233,7 @@
             <h2>edit</h2>
             <form action="javascript:void(0);" onsubmit="window.location.href='/edit/' + document.getElementById('newPageName').value.trim(); return false;">
                 <input type="text" id="newPageName" placeholder="New page name" required>
-                <button type="submit" class="button">Create</button>
+                <button type="submit" class="button" style="width: 100%;">Create</button>
             </form>
         </div>
 
@@ -349,9 +351,14 @@
                     return;
                 }
                 
-                // Display up to 8 thumbnails (reduced for performance)
-                const displayImages = images.filter(img => img).slice(0, 8);
+                // Display all thumbnails
+                const displayImages = images.filter(img => img);
                 photosGrid.innerHTML = '';
+                
+                if (displayImages.length === 0) {
+                    photosGrid.innerHTML = '<p style="color: #999; font-style: italic; grid-column: 1/-1;">No photos yet</p>';
+                    return;
+                }
                 
                 displayImages.forEach(img => {
                     const imgEl = document.createElement('img');
@@ -362,18 +369,11 @@
                     imgEl.onclick = () => window.location.href = '/photos';
                     // Add loading="lazy" for better performance
                     imgEl.loading = 'lazy';
-                    // Constrain image dimensions in URL if possible, or use CSS
+                    // Constrain image dimensions for better loading
                     imgEl.style.maxWidth = '100px';
                     imgEl.style.maxHeight = '100px';
                     photosGrid.appendChild(imgEl);
                 });
-                
-                if (images.length > 8) {
-                    const moreDiv = document.createElement('div');
-                    moreDiv.style.cssText = 'grid-column: 1/-1; text-align: center; color: #666; padding: 10px;';
-                    moreDiv.textContent = `+${images.length - 8} more photos`;
-                    photosGrid.appendChild(moreDiv);
-                }
             } catch (error) {
                 console.error('Error loading photos:', error);
             }
