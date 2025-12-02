@@ -361,6 +361,7 @@
         <button class="btn btn-upload" id="uploadBtn">Upload</button>
         <button class="btn btn-download" id="downloadAllBtn">Download All</button>
         <button class="btn btn-admin" id="adminBtn">Admin</button>
+        <button class="btn" id="viewModeBtn" title="Change view mode">⊞</button>
         
         <div class="admin-controls">
             <button class="btn btn-delete" id="deleteSelectedBtn">Delete Selected</button>
@@ -427,6 +428,7 @@
         let filteredMedia = [];
         let isAdminMode = localStorage.getItem('clipAdminMode') === 'true';
         let currentPreviewItem = null;
+        let viewMode = localStorage.getItem('mediaViewMode') || 'medium'; // small, medium, large, list
         
         // Restore admin state from localStorage
         if (isAdminMode) {
@@ -469,6 +471,14 @@
                 ? `${filteredMedia.length} items` 
                 : `${filteredMedia.length} of ${allMedia.length} items`;
             
+            // Set gallery grid size based on view mode
+            if (viewMode === 'list') {
+                gallery.style.gridTemplateColumns = '1fr';
+            } else {
+                const sizes = {small: '100px', medium: '200px', large: '350px'};
+                gallery.style.gridTemplateColumns = `repeat(auto-fill, minmax(${sizes[viewMode]}, 1fr))`;
+            }
+            
             filteredMedia.forEach(mediaItem => {
                 const item = document.createElement('div');
                 item.className = 'image-item';
@@ -483,27 +493,34 @@
                 mediaWrapper.className = 'image-wrapper';
                 mediaWrapper.onclick = () => openPreview(mediaItem);
                 
-                // Use video thumbnail or image
+                // Use video thumbnail or image thumbnail
                 if (mediaItem.type === 'video') {
-                    const video = document.createElement('video');
-                    video.src = `/media/${mediaItem.name}`;
-                    video.muted = true;
-                    video.loading = 'lazy';
-                    video.style.width = '100%';
-                    video.style.height = '100%';
-                    video.style.objectFit = 'cover';
-                    mediaWrapper.appendChild(video);
-                    
-                    // Add video icon overlay
+                    // Video thumbnail placeholder
+                    const videoThumb = document.createElement('div');
+                    videoThumb.style.cssText = 'width:100%;height:100%;background:#000;display:flex;align-items:center;justify-content:center;';
                     const playIcon = document.createElement('div');
                     playIcon.innerHTML = '▶';
-                    playIcon.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:white;text-shadow:0 2px 4px rgba(0,0,0,0.8);pointer-events:none;';
-                    mediaWrapper.appendChild(playIcon);
+                    playIcon.style.cssText = 'font-size:48px;color:white;text-shadow:0 2px 4px rgba(0,0,0,0.8);';
+                    videoThumb.appendChild(playIcon);
+                    mediaWrapper.appendChild(videoThumb);
                 } else {
+                    // Use appropriate thumbnail size
+                    const thumbnailSizes = {
+                        small: 'small',
+                        medium: 'medium',
+                        large: 'large',
+                        list: 'small'
+                    };
+                    const thumbSize = thumbnailSizes[viewMode];
+                    
                     const img = document.createElement('img');
-                    img.src = `/media/${mediaItem.name}`;
+                    img.src = `/thumbnails/${thumbSize}/${mediaItem.name}`;
                     img.alt = mediaItem.name;
                     img.loading = 'lazy';
+                    // Fallback to full image if thumbnail doesn't exist
+                    img.onerror = function() {
+                        this.src = `/media/${mediaItem.name}`;
+                    };
                     mediaWrapper.appendChild(img);
                 }
                 
@@ -797,8 +814,42 @@
             }
         };
         
+        // View mode toggle
+        const viewModeBtn = document.getElementById('viewModeBtn');
+        viewModeBtn.onclick = () => {
+            const modes = ['small', 'medium', 'large', 'list'];
+            const currentIndex = modes.indexOf(viewMode);
+            viewMode = modes[(currentIndex + 1) % modes.length];
+            localStorage.setItem('mediaViewMode', viewMode);
+            
+            // Update button text
+            const modeIcons = {small: '⊞', medium: '⊟', large: '⊠', list: '☰'};
+            viewModeBtn.innerHTML = modeIcons[viewMode];
+            viewModeBtn.title = `View: ${viewMode}`;
+            
+            renderGallery();
+        };
+        
+        // Set initial button icon
+        const modeIcons = {small: '⊞', medium: '⊟', large: '⊠', list: '☰'};
+        viewModeBtn.innerHTML = modeIcons[viewMode];
+        viewModeBtn.title = `View: ${viewMode}`;
+        
         // Initialize
         fetchMedia();
+        
+        // Check if URL has focus parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const focusItem = urlParams.get('focus');
+        if (focusItem) {
+            // Wait for media to load, then open preview
+            setTimeout(() => {
+                const mediaItem = allMedia.find(m => m.name === focusItem);
+                if (mediaItem) {
+                    openPreview(mediaItem);
+                }
+            }, 500);
+        }
     </script>
 </body>
 </html>

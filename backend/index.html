@@ -360,13 +360,13 @@
                 
                 mediaItems.forEach(item => {
                     if (item.type === 'image') {
-                        // Show pre-generated thumbnails (60x60px)
+                        // Show pre-generated small thumbnails (60x60px)
                         const imgEl = document.createElement('img');
-                        imgEl.src = `/thumbnails/${item.name}`;
+                        imgEl.src = `/thumbnails/small/${item.name}`;
                         imgEl.alt = item.name;
                         imgEl.className = 'photo-thumb';
                         imgEl.title = item.name;
-                        imgEl.onclick = () => window.location.href = '/media';
+                        imgEl.onclick = () => window.location.href = `/media?focus=${encodeURIComponent(item.name)}`;
                         imgEl.loading = 'lazy';
                         imgEl.style.width = '60px';
                         imgEl.style.height = '60px';
@@ -391,7 +391,7 @@
                         videoWrapper.style.justifyContent = 'center';
                         videoWrapper.style.borderRadius = '4px';
                         videoWrapper.title = item.name;
-                        videoWrapper.onclick = () => window.location.href = '/media';
+                        videoWrapper.onclick = () => window.location.href = `/media?focus=${encodeURIComponent(item.name)}`;
                         
                         const playIcon = document.createElement('div');
                         playIcon.innerHTML = '▶';

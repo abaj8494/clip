@@ -47,6 +47,9 @@ var validPath = regexp.MustCompile("^/(edit|save|view|upload|delete|delete-file)
 var filesDir = "./files" // Directory to store uploaded files
 var persistentDir = "/app/persistence" // Directory to store persistent storage
 var thumbnailsDir = "/app/persistence/thumbnails" // Directory to store thumbnails
+var thumbnailsSmallDir = "/app/persistence/thumbnails/small" // 60px thumbnails
+var thumbnailsMediumDir = "/app/persistence/thumbnails/medium" // 150px thumbnails
+var thumbnailsLargeDir = "/app/persistence/thumbnails/large" // 300px thumbnails
 
 // Mutex map for thread-safe page operations
 var pageLocks = make(map[string]*sync.Mutex)
@@ -115,14 +118,26 @@ func generateMissingThumbnails() {
 			continue
 		}
 		
-		// Generate thumbnail
+		// Generate thumbnails in all sizes
 		sourcePath := filepath.Join(mediaDir, filename)
-		if err := generateThumbnail(sourcePath, filename); err != nil {
-			log.Printf("Error generating thumbnail for %s: %v", filename, err)
-		} else {
-			generated++
-			log.Printf("Generated thumbnail for %s", filename)
+		sizes := []struct{
+			size int
+			dir string
+			name string
+		}{
+			{60, thumbnailsSmallDir, "small"},
+			{150, thumbnailsMediumDir, "medium"},
+			{300, thumbnailsLargeDir, "large"},
 		}
+		
+		for _, s := range sizes {
+			if err := generateThumbnail(sourcePath, filename, s.size, s.dir); err != nil {
+				log.Printf("Error generating %s thumbnail for %s: %v", s.name, filename, err)
+			} else {
+				generated++
+			}
+		}
+		log.Printf("Generated thumbnails for %s", filename)
 	}
 	
 	if generated > 0 {
@@ -132,8 +147,8 @@ func generateMissingThumbnails() {
 	}
 }
 
-// generateThumbnail creates a thumbnail for an image file
-func generateThumbnail(sourcePath, filename string) error {
+// generateThumbnail creates a thumbnail for an image file at specified size
+func generateThumbnail(sourcePath, filename string, size int, outputDir string) error {
 	// Open source image
 	srcFile, err := os.Open(sourcePath)
 	if err != nil {
@@ -147,8 +162,8 @@ func generateThumbnail(sourcePath, filename string) error {
 		return err
 	}
 	
-	// Calculate thumbnail dimensions (60x60)
-	thumbSize := 60
+	// Calculate thumbnail dimensions
+	thumbSize := size
 	srcBounds := srcImg.Bounds()
 	srcWidth := srcBounds.Dx()
 	srcHeight := srcBounds.Dy()
@@ -183,12 +198,12 @@ func generateThumbnail(sourcePath, filename string) error {
 	draw.BiLinear.Scale(thumbImg, thumbImg.Bounds(), croppedImg, croppedImg.Bounds(), draw.Over, nil)
 	
 	// Create thumbnail directory if needed
-	if err := os.MkdirAll(thumbnailsDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return err
 	}
 	
 	// Save thumbnail
-	thumbPath := filepath.Join(thumbnailsDir, filename)
+	thumbPath := filepath.Join(outputDir, filename)
 	thumbFile, err := os.Create(thumbPath)
 	if err != nil {
 		return err
@@ -822,15 +837,25 @@ func mediaUploadHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		
-		// Generate thumbnail for images
+		// Generate thumbnails for images in all sizes
 		isImage := ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp" || ext == ".bmp"
 		if isImage {
-			if err := generateThumbnail(destPath, fileHeader.Filename); err != nil {
-				log.Printf("Warning: Could not generate thumbnail for %s: %v", fileHeader.Filename, err)
-				// Continue anyway - thumbnail generation is not critical
-			} else {
-				log.Printf("Generated thumbnail for %s", fileHeader.Filename)
+			sizes := []struct{
+				size int
+				dir string
+				name string
+			}{
+				{60, thumbnailsSmallDir, "small"},
+				{150, thumbnailsMediumDir, "medium"},
+				{300, thumbnailsLargeDir, "large"},
 			}
+			
+			for _, s := range sizes {
+				if err := generateThumbnail(destPath, fileHeader.Filename, s.size, s.dir); err != nil {
+					log.Printf("Warning: Could not generate %s thumbnail for %s: %v", s.name, fileHeader.Filename, err)
+				}
+			}
+			log.Printf("Generated all thumbnails for %s", fileHeader.Filename)
 		}
 		
 		uploadedCount++
@@ -1071,8 +1096,14 @@ func main() {
     log.Fatal(err)
   }
   
-  // Create thumbnails directory
-  if err := os.MkdirAll(thumbnailsDir, 0755); err != nil {
+  // Create thumbnails directories
+  if err := os.MkdirAll(thumbnailsSmallDir, 0755); err != nil {
+    log.Fatal(err)
+  }
+  if err := os.MkdirAll(thumbnailsMediumDir, 0755); err != nil {
+    log.Fatal(err)
+  }
+  if err := os.MkdirAll(thumbnailsLargeDir, 0755); err != nil {
     log.Fatal(err)
   }
   
