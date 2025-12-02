@@ -18,15 +18,15 @@ fi
 
 # Create persistent directory if it doesn't exist
 echo 'Ensuring persistent storage directory exists...'
-mkdir -p /var/www/wiki/persistence
-chmod 755 /var/www/wiki/persistence
+mkdir -p /var/www/clip/persistence
+chmod 755 /var/www/clip/persistence
 
 # Build and start the container
-echo 'Building and starting wiki container...'
+echo 'Building and starting clip container...'
 docker-compose down
 docker-compose build --no-cache
 docker-compose up -d
 
 echo 'Deployment complete!'
-echo 'Your wiki should be running at http://<your-vultr-ip>:21313'
-echo 'Files are now persisted in /var/www/wiki/persistence' 
+echo 'Your clip should be running at http://<your-server-ip>:21313'
+echo 'Files are now persisted in /var/www/clip/persistence' 

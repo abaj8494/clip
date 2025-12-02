@@ -11,7 +11,7 @@ COPY edit.html view.html index.html ./
 COPY icon/ ./icon/
 
 # Initialize a Go module and build the application
-RUN go mod init wiki && go build -o wiki .
+RUN go mod init clip && go build -o clip .
 
 # Use a smaller image for the final container
 FROM alpine:latest
@@ -19,7 +19,7 @@ FROM alpine:latest
 WORKDIR /app
 
 # Copy the binary and template files
-COPY --from=builder /app/wiki /app/wiki
+COPY --from=builder /app/clip /app/clip
 COPY --from=builder /app/edit.html /app/edit.html
 COPY --from=builder /app/view.html /app/view.html
 COPY --from=builder /app/index.html /app/index.html
@@ -33,4 +33,4 @@ RUN mkdir -p /app/persistence
 EXPOSE 21313
 
 # Run the application
-CMD ["/app/wiki"]
+CMD ["/app/clip"]

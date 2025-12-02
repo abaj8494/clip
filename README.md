@@ -1,4 +1,4 @@
-# wiki clipboard
+# clip
 
 this project has been on my mind for about 3 years. cross-platform copy-pasting of text / attachments has always been a pain.
 
@@ -6,7 +6,7 @@ the backend for this application is based on https://go.dev/doc/articles/wiki/, 
 
 # usage
 
-the deployed app is not for you, but i advocate for everyone to have access to such a wiki; as such this source code _is_ for you.
+the deployed app is not for you, but i advocate for everyone to have access to such a clip; as such this source code _is_ for you.
 
 ```bash
 cd backend

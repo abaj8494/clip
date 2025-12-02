@@ -1,17 +1,17 @@
 version: '3.8'
 
 services:
-  wiki:
+  clip:
     build: .
     ports:
       - "21313:21313"
     volumes:
       # Mount a volume for persistent data storage
-      - wiki-data:/app/files
-      - wiki-pages:/app/persistence
+      - clip-data:/app/files
+      - clip-pages:/app/persistence
       # Direct host mapping for development
-      - /var/www/wiki/persistence:/app/persistence
+      - /var/www/clip/persistence:/app/persistence
 
 volumes:
-  wiki-data:
-  wiki-pages: 
+  clip-data:
+  clip-pages: 
