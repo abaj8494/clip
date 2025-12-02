@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photos - clip.abaj.ai</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            background: #fff;
+            color: #333;
+            padding: 20px;
+        }
+        
+        h1 {
+            font-size: 24px;
+            font-weight: normal;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .controls label {
+            font-size: 14px;
+        }
+        
+        .controls input {
+            padding: 5px 10px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 3px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            transition: background 0.2s;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn-admin {
+            background: #6c757d;
+        }
+        
+        .btn-admin:hover {
+            background: #545b62;
+        }
+        
+        .btn-delete {
+            background: #dc3545;
+        }
+        
+        .btn-delete:hover {
+            background: #c82333;
+        }
+        
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .image-item {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+            transition: box-shadow 0.2s;
+            background: #f9f9f9;
+            position: relative;
+        }
+        
+        .image-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .image-item.selected {
+            border: 3px solid #dc3545;
+        }
+        
+        .image-wrapper {
+            width: 100%;
+            height: 200px;
+            overflow: hidden;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        
+        .image-wrapper img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .image-info {
+            padding: 10px;
+            font-size: 13px;
+        }
+        
+        .image-name {
+            word-break: break-all;
+            color: #0066cc;
+            text-decoration: none;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .checkbox-wrapper {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            display: none;
+        }
+        
+        .checkbox-wrapper input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        body.admin-mode .checkbox-wrapper {
+            display: block;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .count {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        /* Modal/Preview Overlay */
+        .preview-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .preview-overlay.active {
+            display: flex;
+        }
+        
+        .preview-content {
+            position: relative;
+            max-width: 90%;
+            max-height: 90%;
+        }
+        
+        .preview-content img {
+            max-width: 100%;
+            max-height: 90vh;
+            object-fit: contain;
+        }
+        
+        .preview-close {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1001;
+        }
+        
+        .preview-close:hover {
+            background: white;
+        }
+        
+        .preview-download {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+        
+        .preview-download:hover {
+            background: white;
+        }
+        
+        .admin-controls {
+            display: none;
+            gap: 10px;
+        }
+        
+        body.admin-mode .admin-controls {
+            display: flex;
+        }
+        
+        /* Login Modal */
+        .login-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .login-modal.active {
+            display: flex;
+        }
+        
+        .login-form {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+            min-width: 300px;
+        }
+        
+        .login-form h2 {
+            margin-bottom: 20px;
+        }
+        
+        .login-form input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .login-form .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .login-form .btn {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Photos</h1>
+    
+    <div class="count" id="count"></div>
+    
+    <div class="controls">
+        <label for="search">Filter:</label>
+        <input type="text" id="search" placeholder="Search filenames...">
+        
+        <button class="btn" id="downloadAllBtn">Download All</button>
+        <button class="btn btn-admin" id="adminBtn">Admin</button>
+        
+        <div class="admin-controls">
+            <button class="btn btn-delete" id="deleteSelectedBtn">Delete Selected</button>
+            <button class="btn" id="exitAdminBtn">Exit Admin</button>
+        </div>
+    </div>
+    
+    <div id="gallery" class="gallery"></div>
+    <div id="loading" class="loading">Loading images...</div>
+
+    <!-- Preview Overlay -->
+    <div class="preview-overlay" id="previewOverlay">
+        <button class="preview-close" id="previewClose">✕</button>
+        <button class="preview-download btn" id="previewDownload">Download</button>
+        <div class="preview-content">
+            <img id="previewImage" src="" alt="Preview">
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="login-modal" id="loginModal">
+        <div class="login-form">
+            <h2>Admin Login</h2>
+            <input type="text" id="username" placeholder="Username" autocomplete="username">
+            <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+            <div class="btn-group">
+                <button class="btn" id="loginBtn">Login</button>
+                <button class="btn btn-admin" id="cancelLoginBtn">Cancel</button>
+            </div>
+            <p id="loginError" style="color: red; margin-top: 10px; display: none;"></p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        const gallery = document.getElementById('gallery');
+        const loading = document.getElementById('loading');
+        const searchInput = document.getElementById('search');
+        const countEl = document.getElementById('count');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
+        const adminBtn = document.getElementById('adminBtn');
+        const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+        const exitAdminBtn = document.getElementById('exitAdminBtn');
+        const previewOverlay = document.getElementById('previewOverlay');
+        const previewImage = document.getElementById('previewImage');
+        const previewClose = document.getElementById('previewClose');
+        const previewDownload = document.getElementById('previewDownload');
+        const loginModal = document.getElementById('loginModal');
+        const loginBtn = document.getElementById('loginBtn');
+        const cancelLoginBtn = document.getElementById('cancelLoginBtn');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const loginError = document.getElementById('loginError');
+        
+        let allImages = [];
+        let filteredImages = [];
+        let isAdminMode = false;
+        let currentPreviewImage = '';
+        
+        // Fetch images from server
+        async function fetchImages() {
+            try {
+                const response = await fetch('/api/photos/list');
+                const data = await response.json();
+                allImages = data.images || [];
+                filteredImages = [...allImages];
+                renderGallery();
+            } catch (error) {
+                console.error('Error fetching images:', error);
+                loading.innerHTML = 'Error loading images';
+            }
+        }
+        
+        function renderGallery() {
+            gallery.innerHTML = '';
+            
+            if (filteredImages.length === 0 && allImages.length === 0) {
+                loading.style.display = 'block';
+                loading.innerHTML = 'No images found.';
+                countEl.textContent = '0 images';
+                return;
+            }
+            
+            if (filteredImages.length === 0) {
+                loading.style.display = 'block';
+                loading.innerHTML = 'No images match your filter.';
+                countEl.textContent = `0 of ${allImages.length} images`;
+                return;
+            }
+            
+            loading.style.display = 'none';
+            countEl.textContent = filteredImages.length === allImages.length 
+                ? `${filteredImages.length} images` 
+                : `${filteredImages.length} of ${allImages.length} images`;
+            
+            filteredImages.forEach(filename => {
+                const item = document.createElement('div');
+                item.className = 'image-item';
+                item.dataset.filename = filename;
+                
+                const checkbox = document.createElement('div');
+                checkbox.className = 'checkbox-wrapper';
+                checkbox.innerHTML = `<input type="checkbox" class="image-checkbox" value="${filename}">`;
+                
+                const imgWrapper = document.createElement('div');
+                imgWrapper.className = 'image-wrapper';
+                imgWrapper.onclick = () => openPreview(filename);
+                
+                const img = document.createElement('img');
+                img.src = `/photos/${filename}`;
+                img.alt = filename;
+                img.loading = 'lazy';
+                
+                const info = document.createElement('div');
+                info.className = 'image-info';
+                info.innerHTML = `<span class="image-name">${filename}</span>`;
+                
+                imgWrapper.appendChild(img);
+                item.appendChild(checkbox);
+                item.appendChild(imgWrapper);
+                item.appendChild(info);
+                gallery.appendChild(item);
+            });
+            
+            // Add checkbox listeners
+            document.querySelectorAll('.image-checkbox').forEach(cb => {
+                cb.addEventListener('change', (e) => {
+                    const item = e.target.closest('.image-item');
+                    if (e.target.checked) {
+                        item.classList.add('selected');
+                    } else {
+                        item.classList.remove('selected');
+                    }
+                });
+            });
+        }
+        
+        // Search functionality
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            filteredImages = allImages.filter(img => 
+                img.toLowerCase().includes(query)
+            );
+            renderGallery();
+        });
+        
+        // Preview functionality
+        function openPreview(filename) {
+            currentPreviewImage = filename;
+            previewImage.src = `/photos/${filename}`;
+            previewOverlay.classList.add('active');
+        }
+        
+        previewClose.onclick = () => {
+            previewOverlay.classList.remove('active');
+        };
+        
+        previewOverlay.onclick = (e) => {
+            if (e.target === previewOverlay) {
+                previewOverlay.classList.remove('active');
+            }
+        };
+        
+        previewDownload.onclick = () => {
+            const link = document.createElement('a');
+            link.href = `/photos/${currentPreviewImage}`;
+            link.download = currentPreviewImage;
+            link.click();
+        };
+        
+        // Download all functionality
+        downloadAllBtn.onclick = async () => {
+            if (allImages.length === 0) {
+                alert('No images to download');
+                return;
+            }
+            
+            downloadAllBtn.disabled = true;
+            downloadAllBtn.textContent = 'Downloading...';
+            
+            try {
+                const zip = new JSZip();
+                const promises = allImages.map(async (filename) => {
+                    const response = await fetch(`/photos/${filename}`);
+                    const blob = await response.blob();
+                    zip.file(filename, blob);
+                });
+                
+                await Promise.all(promises);
+                
+                const content = await zip.generateAsync({type: 'blob'});
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = 'photos.zip';
+                link.click();
+            } catch (error) {
+                console.error('Error creating zip:', error);
+                alert('Error downloading images');
+            } finally {
+                downloadAllBtn.disabled = false;
+                downloadAllBtn.textContent = 'Download All';
+            }
+        };
+        
+        // Admin functionality
+        adminBtn.onclick = () => {
+            loginModal.classList.add('active');
+            usernameInput.value = '';
+            passwordInput.value = '';
+            loginError.style.display = 'none';
+        };
+        
+        cancelLoginBtn.onclick = () => {
+            loginModal.classList.remove('active');
+        };
+        
+        loginBtn.onclick = () => {
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+            
+            if (username === 'aj' && password === 'red') {
+                isAdminMode = true;
+                document.body.classList.add('admin-mode');
+                loginModal.classList.remove('active');
+                loginError.style.display = 'none';
+            } else {
+                loginError.textContent = 'Invalid credentials';
+                loginError.style.display = 'block';
+            }
+        };
+        
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loginBtn.click();
+            }
+        });
+        
+        exitAdminBtn.onclick = () => {
+            isAdminMode = false;
+            document.body.classList.remove('admin-mode');
+            // Uncheck all checkboxes
+            document.querySelectorAll('.image-checkbox').forEach(cb => {
+                cb.checked = false;
+                cb.closest('.image-item').classList.remove('selected');
+            });
+        };
+        
+        deleteSelectedBtn.onclick = async () => {
+            const selected = Array.from(document.querySelectorAll('.image-checkbox:checked'))
+                .map(cb => cb.value);
+            
+            if (selected.length === 0) {
+                alert('No images selected');
+                return;
+            }
+            
+            if (!confirm(`Delete ${selected.length} image(s)?`)) {
+                return;
+            }
+            
+            deleteSelectedBtn.disabled = true;
+            deleteSelectedBtn.textContent = 'Deleting...';
+            
+            try {
+                const response = await fetch('/api/photos/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: 'aj',
+                        password: 'red',
+                        files: selected
+                    })
+                });
+                
+                if (response.ok) {
+                    // Remove deleted images from arrays
+                    allImages = allImages.filter(img => !selected.includes(img));
+                    filteredImages = filteredImages.filter(img => !selected.includes(img));
+                    renderGallery();
+                    alert(`${selected.length} image(s) deleted successfully`);
+                } else {
+                    const error = await response.text();
+                    alert('Error deleting images: ' + error);
+                }
+            } catch (error) {
+                console.error('Error deleting images:', error);
+                alert('Error deleting images');
+            } finally {
+                deleteSelectedBtn.disabled = false;
+                deleteSelectedBtn.textContent = 'Delete Selected';
+            }
+        };
+        
+        // Initialize
+        fetchImages();
+    </script>
+</body>
+</html>
+

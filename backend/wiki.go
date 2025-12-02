@@ -2,6 +2,7 @@ package main
 
 import (
 	//"fmt"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -485,9 +486,100 @@ func deleteFileHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
+// photosPageHandler serves the photos.html page
+func photosPageHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "./photos.html")
+}
+
+// photosListHandler returns a JSON list of all images in the photos directory
+func photosListHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	photosDir := "./photos"
+	
+	// Create photos directory if it doesn't exist
+	if err := os.MkdirAll(photosDir, 0755); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	files, err := os.ReadDir(photosDir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	var images []string
+	for _, file := range files {
+		if !file.IsDir() {
+			// Only include image files
+			name := file.Name()
+			ext := strings.ToLower(filepath.Ext(name))
+			if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp" {
+				images = append(images, name)
+			}
+		}
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"images":["%s"]}`, strings.Join(images, `","`))
+}
+
+// photosDeleteHandler handles deletion of photos (requires authentication)
+func photosDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	// Parse JSON request body
+	type DeleteRequest struct {
+		Username string   `json:"username"`
+		Password string   `json:"password"`
+		Files    []string `json:"files"`
+	}
+	
+	var req DeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	// Authenticate
+	if req.Username != "aj" || req.Password != "red" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Delete files
+	photosDir := "./photos"
+	for _, filename := range req.Files {
+		// Security: prevent path traversal
+		if strings.Contains(filename, "..") || strings.Contains(filename, "/") {
+			http.Error(w, "Invalid filename", http.StatusBadRequest)
+			return
+		}
+		
+		filePath := filepath.Join(photosDir, filename)
+		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+			log.Printf("Error deleting %s: %v", filename, err)
+		}
+	}
+	
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Files deleted successfully"))
+}
+
 func main() {
   // Create files directory if it doesn't exist
   if err := os.MkdirAll(filesDir, 0755); err != nil {
+    log.Fatal(err)
+  }
+  
+  // Create photos directory if it doesn't exist
+  photosDir := "./photos"
+  if err := os.MkdirAll(photosDir, 0755); err != nil {
     log.Fatal(err)
   }
 
@@ -502,6 +594,10 @@ func main() {
   iconServer := http.FileServer(http.Dir("./icon"))
   http.Handle("/icon/", http.StripPrefix("/icon/", corsMiddleware(iconServer)))
   
+  // Set up static file server for photos
+  photosFileServer := http.FileServer(http.Dir(photosDir))
+  http.Handle("/photos/", http.StripPrefix("/photos/", corsMiddleware(photosFileServer)))
+  
   // Serve favicon.ico directly from the icon directory
   http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
     http.ServeFile(w, r, "./icon/favicon.ico")
@@ -512,6 +608,11 @@ func main() {
 
   // API endpoints
   http.HandleFunc("/api/page", apiGetPageHandler)
+  http.HandleFunc("/api/photos/list", photosListHandler)
+  http.HandleFunc("/api/photos/delete", photosDeleteHandler)
+
+  // Photos page
+  http.HandleFunc("/photos", photosPageHandler)
 
   // Traditional wiki endpoints
   http.HandleFunc("/view/", makeHandler(viewHandler))
