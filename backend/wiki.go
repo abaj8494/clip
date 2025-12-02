@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"log"
 	"net/http"
@@ -16,6 +19,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	
+	"golang.org/x/image/draw"
+	_ "image/gif"
 )
 
 // DATA STRUCTURES
@@ -40,6 +46,7 @@ var templates = template.Must(template.ParseFiles("edit.html", "view.html", "ind
 var validPath = regexp.MustCompile("^/(edit|save|view|upload|delete|delete-file)/([a-zA-Z0-9-]+)$")
 var filesDir = "./files" // Directory to store uploaded files
 var persistentDir = "/app/persistence" // Directory to store persistent storage
+var thumbnailsDir = "/app/persistence/thumbnails" // Directory to store thumbnails
 
 // Mutex map for thread-safe page operations
 var pageLocks = make(map[string]*sync.Mutex)
@@ -73,6 +80,133 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// generateMissingThumbnails generates thumbnails for existing media files that don't have one
+func generateMissingThumbnails() {
+	log.Println("Checking for missing thumbnails...")
+	
+	mediaDir := filepath.Join(persistentDir, "media")
+	files, err := os.ReadDir(mediaDir)
+	if err != nil {
+		log.Printf("Error reading media directory: %v", err)
+		return
+	}
+	
+	generated := 0
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		
+		filename := file.Name()
+		ext := strings.ToLower(filepath.Ext(filename))
+		
+		// Only process images
+		isImage := ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp" || ext == ".bmp"
+		if !isImage {
+			continue
+		}
+		
+		// Check if thumbnail exists
+		thumbPath := filepath.Join(thumbnailsDir, filename)
+		if _, err := os.Stat(thumbPath); err == nil {
+			// Thumbnail exists, skip
+			continue
+		}
+		
+		// Generate thumbnail
+		sourcePath := filepath.Join(mediaDir, filename)
+		if err := generateThumbnail(sourcePath, filename); err != nil {
+			log.Printf("Error generating thumbnail for %s: %v", filename, err)
+		} else {
+			generated++
+			log.Printf("Generated thumbnail for %s", filename)
+		}
+	}
+	
+	if generated > 0 {
+		log.Printf("Generated %d thumbnails", generated)
+	} else {
+		log.Println("All thumbnails up to date")
+	}
+}
+
+// generateThumbnail creates a thumbnail for an image file
+func generateThumbnail(sourcePath, filename string) error {
+	// Open source image
+	srcFile, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+	
+	// Decode image
+	srcImg, format, err := image.Decode(srcFile)
+	if err != nil {
+		return err
+	}
+	
+	// Calculate thumbnail dimensions (60x60)
+	thumbSize := 60
+	srcBounds := srcImg.Bounds()
+	srcWidth := srcBounds.Dx()
+	srcHeight := srcBounds.Dy()
+	
+	// Create square thumbnail by cropping to center
+	var cropBounds image.Rectangle
+	if srcWidth > srcHeight {
+		// Landscape: crop width
+		offset := (srcWidth - srcHeight) / 2
+		cropBounds = image.Rect(offset, 0, offset+srcHeight, srcHeight)
+	} else {
+		// Portrait: crop height
+		offset := (srcHeight - srcWidth) / 2
+		cropBounds = image.Rect(0, offset, srcWidth, offset+srcWidth)
+	}
+	
+	// Crop to square
+	type subImager interface {
+		SubImage(r image.Rectangle) image.Image
+	}
+	var croppedImg image.Image
+	if si, ok := srcImg.(subImager); ok {
+		croppedImg = si.SubImage(cropBounds)
+	} else {
+		croppedImg = srcImg
+	}
+	
+	// Create thumbnail image
+	thumbImg := image.NewRGBA(image.Rect(0, 0, thumbSize, thumbSize))
+	
+	// Resize using bilinear interpolation
+	draw.BiLinear.Scale(thumbImg, thumbImg.Bounds(), croppedImg, croppedImg.Bounds(), draw.Over, nil)
+	
+	// Create thumbnail directory if needed
+	if err := os.MkdirAll(thumbnailsDir, 0755); err != nil {
+		return err
+	}
+	
+	// Save thumbnail
+	thumbPath := filepath.Join(thumbnailsDir, filename)
+	thumbFile, err := os.Create(thumbPath)
+	if err != nil {
+		return err
+	}
+	defer thumbFile.Close()
+	
+	// Encode based on original format
+	switch format {
+	case "jpeg", "jpg":
+		err = jpeg.Encode(thumbFile, thumbImg, &jpeg.Options{Quality: 75})
+	case "png":
+		err = png.Encode(thumbFile, thumbImg)
+	default:
+		// Default to JPEG for other formats
+		err = jpeg.Encode(thumbFile, thumbImg, &jpeg.Options{Quality: 75})
+	}
+	
+	return err
 }
 
 /*
@@ -688,6 +822,17 @@ func mediaUploadHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		
+		// Generate thumbnail for images
+		isImage := ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp" || ext == ".bmp"
+		if isImage {
+			if err := generateThumbnail(destPath, fileHeader.Filename); err != nil {
+				log.Printf("Warning: Could not generate thumbnail for %s: %v", fileHeader.Filename, err)
+				// Continue anyway - thumbnail generation is not critical
+			} else {
+				log.Printf("Generated thumbnail for %s", fileHeader.Filename)
+			}
+		}
+		
 		uploadedCount++
 		log.Printf("Uploaded media: %s", fileHeader.Filename)
 	}
@@ -925,6 +1070,14 @@ func main() {
   if err := os.MkdirAll(mediaDir, 0755); err != nil {
     log.Fatal(err)
   }
+  
+  // Create thumbnails directory
+  if err := os.MkdirAll(thumbnailsDir, 0755); err != nil {
+    log.Fatal(err)
+  }
+  
+  // Generate thumbnails for existing media files
+  go generateMissingThumbnails()
 
   // Set up file watcher to periodically backup wiki files
   SetupFileWatcher()
@@ -940,6 +1093,10 @@ func main() {
   // Set up static file server for media (from persistent storage)
   mediaFileServer := http.FileServer(http.Dir(mediaDir))
   http.Handle("/media/", http.StripPrefix("/media/", corsMiddleware(mediaFileServer)))
+  
+  // Set up static file server for thumbnails
+  thumbnailsFileServer := http.FileServer(http.Dir(thumbnailsDir))
+  http.Handle("/thumbnails/", http.StripPrefix("/thumbnails/", corsMiddleware(thumbnailsFileServer)))
   
   // Serve favicon.ico directly from the icon directory
   http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {

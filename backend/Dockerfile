@@ -5,13 +5,15 @@ WORKDIR /app
 # Force rebuild on every deployment
 RUN echo "Rebuild timestamp: $(date)"
 
-# Copy source code
+# Copy source code and dependencies
+COPY go.mod go.sum ./
+RUN go mod download
 COPY wiki.go backup.go ./
 COPY edit.html view.html index.html media.html manifest.json ./
 COPY icon/ ./icon/
 
-# Initialize a Go module and build the application
-RUN go mod init clip && go build -o clip .
+# Build the application
+RUN go build -o clip .
 
 # Use a smaller image for the final container
 FROM alpine:latest
