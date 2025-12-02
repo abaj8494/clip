@@ -972,6 +972,57 @@ func mediaUploadHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Successfully uploaded %d file(s)", uploadedCount)
 }
 
+// mediaDeleteUserHandler handles deletion of user's own uploads (no auth required)
+func mediaDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	// Parse JSON request body
+	type DeleteRequest struct {
+		Files []string `json:"files"`
+	}
+	
+	var req DeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	// Delete files and their thumbnails
+	mediaDir := filepath.Join(persistentDir, "media")
+	deletedCount := 0
+	
+	for _, filename := range req.Files {
+		// Security: prevent path traversal
+		if strings.Contains(filename, "..") || strings.Contains(filename, "/") {
+			http.Error(w, "Invalid filename", http.StatusBadRequest)
+			return
+		}
+		
+		// Delete main file
+		filePath := filepath.Join(mediaDir, filename)
+		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+			log.Printf("Error deleting %s: %v", filename, err)
+			continue
+		}
+		
+		// Delete thumbnails
+		os.Remove(filepath.Join(thumbnailsSmallDir, filename))
+		os.Remove(filepath.Join(thumbnailsMediumDir, filename))
+		os.Remove(filepath.Join(thumbnailsLargeDir, filename))
+		
+		deletedCount++
+		log.Printf("User deleted media: %s", filename)
+	}
+	
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Successfully deleted %d file(s)", deletedCount)
+}
+
 // shareTargetHandler handles files shared from mobile devices via Share Target API
 func shareTargetHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -1166,8 +1217,10 @@ func mediaDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Delete files
+	// Delete files and their thumbnails
 	mediaDir := filepath.Join(persistentDir, "media")
+	deletedCount := 0
+	
 	for _, filename := range req.Files {
 		// Security: prevent path traversal
 		if strings.Contains(filename, "..") || strings.Contains(filename, "/") {
@@ -1175,11 +1228,24 @@ func mediaDeleteHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
+		// Delete main file
 		filePath := filepath.Join(mediaDir, filename)
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 			log.Printf("Error deleting %s: %v", filename, err)
+			continue
 		}
+		
+		// Delete thumbnails
+		os.Remove(filepath.Join(thumbnailsSmallDir, filename))
+		os.Remove(filepath.Join(thumbnailsMediumDir, filename))
+		os.Remove(filepath.Join(thumbnailsLargeDir, filename))
+		
+		deletedCount++
+		log.Printf("Deleted media: %s", filename)
 	}
+	
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Successfully deleted %d file(s)", deletedCount)
 	
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Files deleted successfully"))
@@ -1249,6 +1315,7 @@ func main() {
   http.HandleFunc("/api/media/list", mediaListHandler)
   http.HandleFunc("/api/media/upload", mediaUploadHandler)
   http.HandleFunc("/api/media/delete", mediaDeleteHandler)
+  http.HandleFunc("/api/media/delete-user", mediaDeleteUserHandler)
   http.HandleFunc("/api/share", shareTargetHandler)
 
   // Media page

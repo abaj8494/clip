@@ -380,6 +380,7 @@
             <button class="btn" id="selectAllBtn">Select All</button>
             <button class="btn" id="deselectAllBtn">Deselect All</button>
             <button class="btn btn-download" id="downloadSelectedBtn">Download Selected</button>
+            <button class="btn btn-delete" id="deleteMyUploadsBtn">Delete Selected</button>
             <button class="btn" id="exitSelectBtn">Exit Select</button>
         </div>
         
@@ -433,6 +434,7 @@
         const selectAllBtn = document.getElementById('selectAllBtn');
         const deselectAllBtn = document.getElementById('deselectAllBtn');
         const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
+        const deleteMyUploadsBtn = document.getElementById('deleteMyUploadsBtn');
         const exitSelectBtn = document.getElementById('exitSelectBtn');
         const adminBtn = document.getElementById('adminBtn');
         const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
@@ -723,6 +725,15 @@
                 });
                 
                 if (response.ok) {
+                    // Track uploaded files in localStorage
+                    const myUploads = JSON.parse(localStorage.getItem('myMediaUploads') || '[]');
+                    for (let i = 0; i < files.length; i++) {
+                        if (!myUploads.includes(files[i].name)) {
+                            myUploads.push(files[i].name);
+                        }
+                    }
+                    localStorage.setItem('myMediaUploads', JSON.stringify(myUploads));
+                    
                     alert(`${files.length} file(s) uploaded successfully!`);
                     fetchMedia(); // Refresh gallery
                 } else {
@@ -811,6 +822,73 @@
             }
         };
         
+        // Delete user's own uploads
+        deleteMyUploadsBtn.onclick = async () => {
+            const selected = Array.from(document.querySelectorAll('.image-checkbox:checked'))
+                .map(cb => cb.value);
+            
+            if (selected.length === 0) {
+                alert('No items selected');
+                return;
+            }
+            
+            // Check which items are actually user's uploads
+            const myUploads = JSON.parse(localStorage.getItem('myMediaUploads') || '[]');
+            const canDelete = selected.filter(filename => myUploads.includes(filename));
+            const cannotDelete = selected.filter(filename => !myUploads.includes(filename));
+            
+            if (canDelete.length === 0) {
+                alert('None of the selected items were uploaded by you. You can only delete your own uploads.');
+                return;
+            }
+            
+            let message = `Delete ${canDelete.length} item(s) that you uploaded?`;
+            if (cannotDelete.length > 0) {
+                message += `\n\n(${cannotDelete.length} items uploaded by others will be skipped)`;
+            }
+            
+            if (!confirm(message)) {
+                return;
+            }
+            
+            deleteMyUploadsBtn.disabled = true;
+            deleteMyUploadsBtn.textContent = 'Deleting...';
+            
+            try {
+                const response = await fetch('/api/media/delete-user', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        files: canDelete
+                    })
+                });
+                
+                if (response.ok) {
+                    // Remove from localStorage
+                    const updatedUploads = myUploads.filter(f => !canDelete.includes(f));
+                    localStorage.setItem('myMediaUploads', JSON.stringify(updatedUploads));
+                    
+                    // Remove from arrays
+                    allMedia = allMedia.filter(item => !canDelete.includes(item.name));
+                    filteredMedia = filteredMedia.filter(item => !canDelete.includes(item.name));
+                    renderGallery();
+                    
+                    alert(`${canDelete.length} item(s) deleted successfully`);
+                } else {
+                    const error = await response.text();
+                    alert('Error deleting items: ' + error);
+                }
+            } catch (error) {
+                console.error('Error deleting items:', error);
+                alert('Error deleting items');
+            } finally {
+                deleteMyUploadsBtn.disabled = false;
+                deleteMyUploadsBtn.textContent = 'Delete Selected';
+            }
+        };
+        
         // Admin functionality
         adminBtn.onclick = () => {
             loginModal.classList.add('active');
@@ -887,11 +965,11 @@
                 });
                 
                 if (response.ok) {
-                    // Remove deleted images from arrays
-                    allImages = allImages.filter(img => !selected.includes(img));
-                    filteredImages = filteredImages.filter(img => !selected.includes(img));
+                    // Remove deleted items from arrays
+                    allMedia = allMedia.filter(item => !selected.includes(item.name));
+                    filteredMedia = filteredMedia.filter(item => !selected.includes(item.name));
                     renderGallery();
-                    alert(`${selected.length} image(s) deleted successfully`);
+                    alert(`${selected.length} item(s) deleted successfully`);
                 } else {
                     const error = await response.text();
                     alert('Error deleting images: ' + error);
