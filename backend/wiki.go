@@ -26,8 +26,13 @@ type Page struct {
 }
 
 // For the index page to display all available pages
+type PageListItem struct {
+  Title     string
+  HasFiles  bool
+}
+
 type IndexPage struct {
-  Pages []string // List of page titles
+  Pages []PageListItem // List of page items with metadata
 }
 
 // GLOBAL VARIABLES
@@ -353,11 +358,11 @@ func loadPage(title string) (*Page, error) {
   return &Page{Title: title, Body: body, Files: files}, nil
 }
 
-func getAllPages() []string {
+func getAllPages() []PageListItem {
   // Get all .txt files (wiki pages) from persistent directory
   files, err := filepath.Glob(filepath.Join(persistentDir, "*.txt"))
   if err != nil {
-    return []string{}
+    return []PageListItem{}
   }
   
   // Create a slice to store file info for sorting
@@ -390,13 +395,21 @@ func getAllPages() []string {
     return fileInfos[i].modTime.After(fileInfos[j].modTime)
   })
   
-  // Extract sorted titles
-  titles := make([]string, 0, len(fileInfos))
+  // Create page list items with file attachment info
+  pageItems := make([]PageListItem, 0, len(fileInfos))
   for _, info := range fileInfos {
-    titles = append(titles, info.name)
+    // Check if this page has attachments
+    filesListPath := filepath.Join(persistentDir, info.name + ".files.txt")
+    _, err := os.Stat(filesListPath)
+    hasFiles := err == nil
+    
+    pageItems = append(pageItems, PageListItem{
+      Title:    info.name,
+      HasFiles: hasFiles,
+    })
   }
   
-  return titles
+  return pageItems
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
@@ -759,10 +772,11 @@ func shareTargetHandler(w http.ResponseWriter, r *http.Request) {
 		p = &Page{Title: title, Body: []byte(""), Files: []string{}}
 	}
 	
-	// Add shared text/URL to page body if provided
+	// Add shared text/URL to page body if provided, or timestamp if just files
 	var newContent string
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	
 	if sharedTitle != "" || sharedText != "" || sharedURL != "" {
-		timestamp := time.Now().Format("2006-01-02 15:04:05")
 		newContent = fmt.Sprintf("\n---\nShared at %s\n", timestamp)
 		if sharedTitle != "" {
 			newContent += fmt.Sprintf("Title: %s\n", sharedTitle)
@@ -773,6 +787,10 @@ func shareTargetHandler(w http.ResponseWriter, r *http.Request) {
 		if sharedURL != "" {
 			newContent += fmt.Sprintf("URL: %s\n", sharedURL)
 		}
+		p.Body = append(p.Body, []byte(newContent)...)
+	} else if len(uploadedFiles) > 0 {
+		// If only files shared (no text), add a simple timestamp to update mod time
+		newContent = fmt.Sprintf("\n---\nFiles shared at %s\n", timestamp)
 		p.Body = append(p.Body, []byte(newContent)...)
 	}
 	

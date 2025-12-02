@@ -252,7 +252,7 @@
             <ul>
                 {{if .Pages}}
                     {{range .Pages}}
-                        <li><a href="/view/{{.}}">{{.}}</a></li>
+                        <li><a href="/view/{{.Title}}">{{if .HasFiles}}▪ {{end}}{{.Title}}</a></li>
                     {{end}}
                 {{else}}
                     <li>empty!</li>
@@ -347,36 +347,44 @@
             try {
                 const response = await fetch('/api/media/list');
                 const data = await response.json();
-                const images = data.images || [];
+                const mediaItems = data.media || [];
                 const mediaGrid = document.getElementById('mediaGrid');
                 
-                if (images.length === 0 || (images.length === 1 && images[0] === '')) {
+                if (mediaItems.length === 0) {
                     mediaGrid.innerHTML = '<p style="color: #999; font-style: italic;">No media yet</p>';
                     return;
                 }
                 
                 // Display all thumbnails
-                const displayImages = images.filter(img => img);
                 mediaGrid.innerHTML = '';
                 
-                if (displayImages.length === 0) {
-                    mediaGrid.innerHTML = '<p style="color: #999; font-style: italic; grid-column: 1/-1;">No media yet</p>';
-                    return;
-                }
-                
-                displayImages.forEach(img => {
-                    const imgEl = document.createElement('img');
-                    imgEl.src = `/media/${img}`;
-                    imgEl.alt = img;
-                    imgEl.className = 'photo-thumb';
-                    imgEl.title = img;
-                    imgEl.onclick = () => window.location.href = '/media';
-                    // Add loading="lazy" for better performance
-                    imgEl.loading = 'lazy';
-                    // Constrain image dimensions for better loading
-                    imgEl.style.maxWidth = '100px';
-                    imgEl.style.maxHeight = '100px';
-                    mediaGrid.appendChild(imgEl);
+                mediaItems.forEach(item => {
+                    if (item.type === 'image') {
+                        // Show images as thumbnails
+                        const imgEl = document.createElement('img');
+                        imgEl.src = `/media/${item.name}`;
+                        imgEl.alt = item.name;
+                        imgEl.className = 'photo-thumb';
+                        imgEl.title = item.name;
+                        imgEl.onclick = () => window.location.href = '/media';
+                        imgEl.loading = 'lazy';
+                        imgEl.style.maxWidth = '100px';
+                        imgEl.style.maxHeight = '100px';
+                        mediaGrid.appendChild(imgEl);
+                    } else if (item.type === 'video') {
+                        // Show video thumbnails
+                        const videoEl = document.createElement('video');
+                        videoEl.src = `/media/${item.name}`;
+                        videoEl.className = 'photo-thumb';
+                        videoEl.title = item.name;
+                        videoEl.muted = true;
+                        videoEl.onclick = () => window.location.href = '/media';
+                        videoEl.loading = 'lazy';
+                        videoEl.style.maxWidth = '100px';
+                        videoEl.style.maxHeight = '100px';
+                        videoEl.style.objectFit = 'cover';
+                        mediaGrid.appendChild(videoEl);
+                    }
                 });
             } catch (error) {
                 console.error('Error loading media:', error);
