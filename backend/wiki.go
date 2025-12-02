@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 	
+	"github.com/rwcarlsen/goexif/exif"
 	"golang.org/x/image/draw"
 	_ "image/gif"
 )
@@ -83,6 +84,90 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// cacheMiddleware adds caching headers for static assets
+func cacheMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Cache thumbnails for 1 week
+		w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// applyOrientation rotates/flips image based on EXIF orientation
+func applyOrientation(img image.Image, orientation int) image.Image {
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+	
+	switch orientation {
+	case 2: // Flip horizontal
+		dst := image.NewRGBA(bounds)
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				dst.Set(width-1-x, y, img.At(x, y))
+			}
+		}
+		return dst
+		
+	case 3: // Rotate 180
+		dst := image.NewRGBA(bounds)
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				dst.Set(width-1-x, height-1-y, img.At(x, y))
+			}
+		}
+		return dst
+		
+	case 4: // Flip vertical
+		dst := image.NewRGBA(bounds)
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				dst.Set(x, height-1-y, img.At(x, y))
+			}
+		}
+		return dst
+		
+	case 5: // Rotate 90 CCW + flip horizontal
+		dst := image.NewRGBA(image.Rect(0, 0, height, width))
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				dst.Set(y, x, img.At(x, y))
+			}
+		}
+		return dst
+		
+	case 6: // Rotate 90 CW
+		dst := image.NewRGBA(image.Rect(0, 0, height, width))
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				dst.Set(height-1-y, x, img.At(x, y))
+			}
+		}
+		return dst
+		
+	case 7: // Rotate 90 CW + flip horizontal
+		dst := image.NewRGBA(image.Rect(0, 0, height, width))
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				dst.Set(y, width-1-x, img.At(x, y))
+			}
+		}
+		return dst
+		
+	case 8: // Rotate 90 CCW
+		dst := image.NewRGBA(image.Rect(0, 0, height, width))
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				dst.Set(y, width-1-x, img.At(x, y))
+			}
+		}
+		return dst
+		
+	default: // 1 or unknown - no transformation
+		return img
+	}
 }
 
 // generateMissingThumbnails generates thumbnails for existing media files that don't have one
@@ -160,6 +245,22 @@ func generateThumbnail(sourcePath, filename string, size int, outputDir string) 
 	srcImg, format, err := image.Decode(srcFile)
 	if err != nil {
 		return err
+	}
+	
+	// Re-open file for EXIF reading
+	srcFile.Seek(0, 0)
+	
+	// Check for EXIF orientation and apply rotation
+	x, err := exif.Decode(srcFile)
+	if err == nil {
+		// Get orientation tag
+		orientTag, err := x.Get(exif.Orientation)
+		if err == nil {
+			orient, err := orientTag.Int(0)
+			if err == nil && orient != 1 {
+				srcImg = applyOrientation(srcImg, orient)
+			}
+		}
 	}
 	
 	// Calculate thumbnail dimensions
@@ -1125,9 +1226,9 @@ func main() {
   mediaFileServer := http.FileServer(http.Dir(mediaDir))
   http.Handle("/media/", http.StripPrefix("/media/", corsMiddleware(mediaFileServer)))
   
-  // Set up static file server for thumbnails
+  // Set up static file server for thumbnails with caching
   thumbnailsFileServer := http.FileServer(http.Dir(thumbnailsDir))
-  http.Handle("/thumbnails/", http.StripPrefix("/thumbnails/", corsMiddleware(thumbnailsFileServer)))
+  http.Handle("/thumbnails/", http.StripPrefix("/thumbnails/", corsMiddleware(cacheMiddleware(thumbnailsFileServer))))
   
   // Serve favicon.ico directly from the icon directory
   http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {

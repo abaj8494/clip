@@ -368,6 +368,7 @@
                         imgEl.title = item.name;
                         imgEl.onclick = () => window.location.href = `/media?focus=${encodeURIComponent(item.name)}`;
                         imgEl.loading = 'lazy';
+                        imgEl.decoding = 'async';
                         imgEl.style.width = '60px';
                         imgEl.style.height = '60px';
                         imgEl.style.cursor = 'pointer';
