@@ -142,9 +142,9 @@
     </form>
 
     <div class="upload-form">
-        <h2>Upload File</h2>
+        <h2>Upload File(s)</h2>
         <form action="/upload/{{.Title}}" method="POST" enctype="multipart/form-data">
-            <input type="file" name="file">
+            <input type="file" name="file" multiple>
             <input type="submit" value="Upload" class="button">
         </form>
     </div>

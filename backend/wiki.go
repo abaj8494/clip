@@ -182,49 +182,62 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, title string) {
     return
   }
 
-  // Parse multipart form, 10 << 20 specifies maximum upload of 10 MB files
+  // Parse multipart form, 10 << 20 specifies maximum upload of 10 MB files per file
   r.ParseMultipartForm(10 << 20)
   
-  // Get file from form
-  file, handler, err := r.FormFile("file")
-  if err != nil {
-    http.Error(w, "Error retrieving file: "+err.Error(), http.StatusBadRequest)
-    return
-  }
-  defer file.Close()
-
-  // Create file in the server
-  filePath := filepath.Join(pageDirPath, handler.Filename)
-  dst, err := os.Create(filePath)
-  if err != nil {
-    http.Error(w, err.Error(), http.StatusInternalServerError)
-    return
-  }
-  defer dst.Close()
-
-  // Copy file contents
-  if _, err := io.Copy(dst, file); err != nil {
-    http.Error(w, err.Error(), http.StatusInternalServerError)
+  // Get all files from form
+  files := r.MultipartForm.File["file"]
+  if len(files) == 0 {
+    http.Error(w, "No files selected", http.StatusBadRequest)
     return
   }
 
-  // Update page to include the file
+  // Load the page first
   p, err := loadPage(title)
   if err != nil {
-    p = &Page{Title: title, Body: []byte{}, Files: []string{handler.Filename}}
-  } else {
+    p = &Page{Title: title, Body: []byte{}, Files: []string{}}
+  }
+
+  // Process each file
+  uploadedFiles := []string{}
+  for _, fileHeader := range files {
+    file, err := fileHeader.Open()
+    if err != nil {
+      http.Error(w, "Error opening file: "+err.Error(), http.StatusInternalServerError)
+      return
+    }
+    defer file.Close()
+
+    // Create file in the server
+    filePath := filepath.Join(pageDirPath, fileHeader.Filename)
+    dst, err := os.Create(filePath)
+    if err != nil {
+      http.Error(w, err.Error(), http.StatusInternalServerError)
+      return
+    }
+    defer dst.Close()
+
+    // Copy file contents
+    if _, err := io.Copy(dst, file); err != nil {
+      http.Error(w, err.Error(), http.StatusInternalServerError)
+      return
+    }
+
     // Check if file is already in the list
     found := false
     for _, f := range p.Files {
-      if f == handler.Filename {
+      if f == fileHeader.Filename {
         found = true
         break
       }
     }
     if !found {
-      p.Files = append(p.Files, handler.Filename)
+      p.Files = append(p.Files, fileHeader.Filename)
+      uploadedFiles = append(uploadedFiles, fileHeader.Filename)
     }
   }
+
+  // Save the updated page
   err = p.save()
   if err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -235,7 +248,11 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, title string) {
   go BackupWikiFiles()
 
   w.WriteHeader(http.StatusOK)
-  w.Write([]byte("File uploaded successfully"))
+  if len(uploadedFiles) == 1 {
+    w.Write([]byte("File uploaded successfully"))
+  } else {
+    w.Write([]byte(fmt.Sprintf("%d files uploaded successfully", len(uploadedFiles))))
+  }
 }
 
 // apiGetPageHandler returns page content as JSON
