@@ -252,7 +252,7 @@
             <ul>
                 {{if .Pages}}
                     {{range .Pages}}
-                        <li><a href="/view/{{.Title}}">{{if .HasFiles}}▪ {{end}}{{.Title}}</a></li>
+                        <li><a href="/view/{{.Title}}">{{if .HasFiles}}Π {{end}}{{.Title}}</a></li>
                     {{end}}
                 {{else}}
                     <li>empty!</li>
@@ -355,12 +355,14 @@
                     return;
                 }
                 
-                // Display all thumbnails
+                // Display lightweight thumbnails (limit to 12 for performance)
                 mediaGrid.innerHTML = '';
+                const maxThumbnails = 12;
+                const displayItems = mediaItems.slice(0, maxThumbnails);
                 
-                mediaItems.forEach(item => {
+                displayItems.forEach(item => {
                     if (item.type === 'image') {
-                        // Show images as thumbnails
+                        // Show images as small thumbnails
                         const imgEl = document.createElement('img');
                         imgEl.src = `/media/${item.name}`;
                         imgEl.alt = item.name;
@@ -368,24 +370,45 @@
                         imgEl.title = item.name;
                         imgEl.onclick = () => window.location.href = '/media';
                         imgEl.loading = 'lazy';
-                        imgEl.style.maxWidth = '100px';
-                        imgEl.style.maxHeight = '100px';
+                        imgEl.style.width = '60px';
+                        imgEl.style.height = '60px';
+                        imgEl.style.objectFit = 'cover';
+                        imgEl.style.cursor = 'pointer';
                         mediaGrid.appendChild(imgEl);
                     } else if (item.type === 'video') {
-                        // Show video thumbnails
-                        const videoEl = document.createElement('video');
-                        videoEl.src = `/media/${item.name}`;
-                        videoEl.className = 'photo-thumb';
-                        videoEl.title = item.name;
-                        videoEl.muted = true;
-                        videoEl.onclick = () => window.location.href = '/media';
-                        videoEl.loading = 'lazy';
-                        videoEl.style.maxWidth = '100px';
-                        videoEl.style.maxHeight = '100px';
-                        videoEl.style.objectFit = 'cover';
-                        mediaGrid.appendChild(videoEl);
+                        // Show video thumbnails (don't autoload)
+                        const videoWrapper = document.createElement('div');
+                        videoWrapper.style.width = '60px';
+                        videoWrapper.style.height = '60px';
+                        videoWrapper.style.backgroundColor = '#000';
+                        videoWrapper.style.position = 'relative';
+                        videoWrapper.style.cursor = 'pointer';
+                        videoWrapper.style.display = 'flex';
+                        videoWrapper.style.alignItems = 'center';
+                        videoWrapper.style.justifyContent = 'center';
+                        videoWrapper.onclick = () => window.location.href = '/media';
+                        
+                        const playIcon = document.createElement('div');
+                        playIcon.innerHTML = '▶';
+                        playIcon.style.color = 'white';
+                        playIcon.style.fontSize = '20px';
+                        videoWrapper.appendChild(playIcon);
+                        
+                        mediaGrid.appendChild(videoWrapper);
                     }
                 });
+                
+                // Show count of remaining items
+                if (mediaItems.length > maxThumbnails) {
+                    const moreDiv = document.createElement('div');
+                    moreDiv.style.gridColumn = '1 / -1';
+                    moreDiv.style.textAlign = 'center';
+                    moreDiv.style.color = '#666';
+                    moreDiv.style.fontSize = '14px';
+                    moreDiv.style.marginTop = '10px';
+                    moreDiv.innerHTML = `<a href="/media" style="color: #0366d6;">+${mediaItems.length - maxThumbnails} more</a>`;
+                    mediaGrid.appendChild(moreDiv);
+                }
             } catch (error) {
                 console.error('Error loading media:', error);
             }
