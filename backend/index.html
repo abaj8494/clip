@@ -3,6 +3,10 @@
 <head>
     <title>clip</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="clip">
     <link rel="icon" href="/icon/favicon.ico" type="image/x-icon">
     <link rel="shortcut icon" href="/icon/favicon.ico" type="image/x-icon">
     <!-- Additional favicon formats and cache busting -->
@@ -140,15 +144,15 @@
             margin: 0;
         }
         
-        .photos-preview {
+        .media-preview {
             margin-bottom: 30px;
         }
         
-        .photos-preview h2 {
+        .media-preview h2 {
             margin-bottom: 15px;
         }
         
-        .photos-grid {
+        .media-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
             gap: 10px;
@@ -172,7 +176,7 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
         
-        .photos-link {
+        .media-link {
             display: inline-block;
             margin-bottom: 10px;
             font-size: 16px;
@@ -237,10 +241,10 @@
             </form>
         </div>
 
-        <div class="photos-preview admin-section">
-            <h2>photos</h2>
-            <a href="/photos" class="photos-link">View Gallery →</a>
-            <div class="photos-grid" id="photosGrid"></div>
+        <div class="media-preview admin-section">
+            <h2>media</h2>
+            <a href="/media" class="media-link">View Gallery →</a>
+            <div class="media-grid" id="mediaGrid"></div>
         </div>
 
         <div class="recent admin-section">
@@ -317,7 +321,7 @@
                 document.body.classList.add('admin-mode');
                 loginModal.classList.remove('active');
                 loginError.style.display = 'none';
-                loadPhotoThumbnails(); // Load photos after login
+                loadPhotoThumbnails(); // Load media after login
             } else {
                 loginError.textContent = 'Invalid credentials';
                 loginError.style.display = 'block';
@@ -341,41 +345,41 @@
             if (!isAdminMode) return;
             
             try {
-                const response = await fetch('/api/photos/list');
+                const response = await fetch('/api/media/list');
                 const data = await response.json();
                 const images = data.images || [];
-                const photosGrid = document.getElementById('photosGrid');
+                const mediaGrid = document.getElementById('mediaGrid');
                 
                 if (images.length === 0 || (images.length === 1 && images[0] === '')) {
-                    photosGrid.innerHTML = '<p style="color: #999; font-style: italic;">No photos yet</p>';
+                    mediaGrid.innerHTML = '<p style="color: #999; font-style: italic;">No media yet</p>';
                     return;
                 }
                 
                 // Display all thumbnails
                 const displayImages = images.filter(img => img);
-                photosGrid.innerHTML = '';
+                mediaGrid.innerHTML = '';
                 
                 if (displayImages.length === 0) {
-                    photosGrid.innerHTML = '<p style="color: #999; font-style: italic; grid-column: 1/-1;">No photos yet</p>';
+                    mediaGrid.innerHTML = '<p style="color: #999; font-style: italic; grid-column: 1/-1;">No media yet</p>';
                     return;
                 }
                 
                 displayImages.forEach(img => {
                     const imgEl = document.createElement('img');
-                    imgEl.src = `/photos/${img}`;
+                    imgEl.src = `/media/${img}`;
                     imgEl.alt = img;
                     imgEl.className = 'photo-thumb';
                     imgEl.title = img;
-                    imgEl.onclick = () => window.location.href = '/photos';
+                    imgEl.onclick = () => window.location.href = '/media';
                     // Add loading="lazy" for better performance
                     imgEl.loading = 'lazy';
                     // Constrain image dimensions for better loading
                     imgEl.style.maxWidth = '100px';
                     imgEl.style.maxHeight = '100px';
-                    photosGrid.appendChild(imgEl);
+                    mediaGrid.appendChild(imgEl);
                 });
             } catch (error) {
-                console.error('Error loading photos:', error);
+                console.error('Error loading media:', error);
             }
         }
         
@@ -387,7 +391,7 @@
             qr.make();
             document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
             
-            // Load photos if admin mode is active
+            // Load media if admin mode is active
             loadPhotoThumbnails();
         };
     </script>

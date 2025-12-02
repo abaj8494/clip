@@ -405,7 +405,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
     return
   }
   
-  // Handle curl file uploads to root domain -> send to "unsorted"
+  // Handle curl file uploads to root domain -> send to "curl"
   if r.Method == "POST" {
     // Parse multipart form
     err := r.ParseMultipartForm(32 << 20) // 32MB max
@@ -415,8 +415,8 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
     }
     
     if r.MultipartForm != nil && len(r.MultipartForm.File) > 0 {
-      // Upload files to "unsorted" page
-      title := "unsorted"
+      // Upload files to "curl" page
+      title := "curl"
       
       // Create the page directory if it doesn't exist
       pageDirPath := filepath.Join(filesDir, title)
@@ -461,7 +461,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
           }
           
           uploadedFiles = append(uploadedFiles, fileHeader.Filename)
-          log.Printf("Uploaded %s to unsorted", fileHeader.Filename)
+          log.Printf("Uploaded %s to curl", fileHeader.Filename)
         }
       }
       
@@ -494,9 +494,9 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
         
         w.WriteHeader(http.StatusOK)
         if len(uploadedFiles) == 1 {
-          fmt.Fprintf(w, "File uploaded to unsorted: %s\n", uploadedFiles[0])
+          fmt.Fprintf(w, "File uploaded to curl: %s\n", uploadedFiles[0])
         } else {
-          fmt.Fprintf(w, "%d files uploaded to unsorted\n", len(uploadedFiles))
+          fmt.Fprintf(w, "%d files uploaded to curl\n", len(uploadedFiles))
         }
         return
       }
@@ -610,8 +610,8 @@ func deleteFileHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
-// photosUploadHandler handles photo uploads
-func photosUploadHandler(w http.ResponseWriter, r *http.Request) {
+// mediaUploadHandler handles media uploads (photos and videos)
+func mediaUploadHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	
 	if r.Method != "POST" {
@@ -619,14 +619,14 @@ func photosUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Parse multipart form (32MB max memory)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	// Parse multipart form (100MB max memory for videos)
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		http.Error(w, "Error parsing form", http.StatusBadRequest)
 		return
 	}
 	
-	photosDir := filepath.Join(persistentDir, "photos")
-	if err := os.MkdirAll(photosDir, 0755); err != nil {
+	mediaDir := filepath.Join(persistentDir, "media")
+	if err := os.MkdirAll(mediaDir, 0755); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -639,15 +639,17 @@ func photosUploadHandler(w http.ResponseWriter, r *http.Request) {
 	
 	uploadedCount := 0
 	for _, fileHeader := range files {
-		// Validate file type
+		// Validate file type (images and videos)
 		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 		validExtensions := map[string]bool{
 			".jpg": true, ".jpeg": true, ".png": true,
-			".gif": true, ".webp": true,
+			".gif": true, ".webp": true, ".bmp": true,
+			".mp4": true, ".webm": true, ".mov": true,
+			".avi": true, ".mkv": true, ".m4v": true,
 		}
 		
 		if !validExtensions[ext] {
-			continue // Skip non-image files
+			continue // Skip unsupported files
 		}
 		
 		// Open uploaded file
@@ -659,7 +661,7 @@ func photosUploadHandler(w http.ResponseWriter, r *http.Request) {
 		defer file.Close()
 		
 		// Create destination file
-		destPath := filepath.Join(photosDir, fileHeader.Filename)
+		destPath := filepath.Join(mediaDir, fileHeader.Filename)
 		dest, err := os.Create(destPath)
 		if err != nil {
 			log.Printf("Error creating destination file: %v", err)
@@ -674,11 +676,11 @@ func photosUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		
 		uploadedCount++
-		log.Printf("Uploaded photo: %s", fileHeader.Filename)
+		log.Printf("Uploaded media: %s", fileHeader.Filename)
 	}
 	
 	if uploadedCount == 0 {
-		http.Error(w, "No valid image files uploaded", http.StatusBadRequest)
+		http.Error(w, "No valid media files uploaded", http.StatusBadRequest)
 		return
 	}
 	
@@ -686,46 +688,169 @@ func photosUploadHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Successfully uploaded %d file(s)", uploadedCount)
 }
 
-// photosPageHandler serves the photos.html page
-func photosPageHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "./photos.html")
-}
-
-// photosListHandler returns a JSON list of all images in the photos directory
-func photosListHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	photosDir := filepath.Join(persistentDir, "photos")
+// shareTargetHandler handles files shared from mobile devices via Share Target API
+func shareTargetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	
-	// Create photos directory if it doesn't exist
-	if err := os.MkdirAll(photosDir, 0755); err != nil {
+	// Parse multipart form
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+	
+	title := "shared"
+	
+	// Create the page directory if it doesn't exist
+	pageDirPath := filepath.Join(filesDir, title)
+	if err := os.MkdirAll(pageDirPath, 0755); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	
-	files, err := os.ReadDir(photosDir)
+	// Also create in persistent storage
+	persistentPageDir := filepath.Join(persistentDir, "files", title)
+	if err := os.MkdirAll(persistentPageDir, 0755); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	var uploadedFiles []string
+	sharedText := r.FormValue("text")
+	sharedURL := r.FormValue("url")
+	sharedTitle := r.FormValue("title")
+	
+	// Process shared files
+	if r.MultipartForm != nil && len(r.MultipartForm.File["files"]) > 0 {
+		for _, fileHeader := range r.MultipartForm.File["files"] {
+			// Open uploaded file
+			file, err := fileHeader.Open()
+			if err != nil {
+				log.Printf("Error opening shared file: %v", err)
+				continue
+			}
+			defer file.Close()
+			
+			// Create destination file
+			destPath := filepath.Join(pageDirPath, fileHeader.Filename)
+			dest, err := os.Create(destPath)
+			if err != nil {
+				log.Printf("Error creating file: %v", err)
+				continue
+			}
+			defer dest.Close()
+			
+			// Copy file
+			if _, err := io.Copy(dest, file); err != nil {
+				log.Printf("Error saving file: %v", err)
+				continue
+			}
+			
+			uploadedFiles = append(uploadedFiles, fileHeader.Filename)
+			log.Printf("Shared file uploaded: %s", fileHeader.Filename)
+		}
+	}
+	
+	// Load or create the "shared" page
+	p, err := loadPage(title)
+	if err != nil {
+		p = &Page{Title: title, Body: []byte(""), Files: []string{}}
+	}
+	
+	// Add shared text/URL to page body if provided
+	var newContent string
+	if sharedTitle != "" || sharedText != "" || sharedURL != "" {
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		newContent = fmt.Sprintf("\n---\nShared at %s\n", timestamp)
+		if sharedTitle != "" {
+			newContent += fmt.Sprintf("Title: %s\n", sharedTitle)
+		}
+		if sharedText != "" {
+			newContent += fmt.Sprintf("Text: %s\n", sharedText)
+		}
+		if sharedURL != "" {
+			newContent += fmt.Sprintf("URL: %s\n", sharedURL)
+		}
+		p.Body = append(p.Body, []byte(newContent)...)
+	}
+	
+	// Add uploaded files to the page
+	existingFiles := make(map[string]bool)
+	for _, f := range p.Files {
+		existingFiles[f] = true
+	}
+	
+	for _, f := range uploadedFiles {
+		if !existingFiles[f] {
+			p.Files = append(p.Files, f)
+		}
+	}
+	
+	// Save the page
+	if err := p.save(); err != nil {
+		log.Printf("Error saving shared page: %v", err)
+		http.Error(w, "Error saving", http.StatusInternalServerError)
+		return
+	}
+	
+	// Trigger backup
+	go BackupWikiFiles()
+	
+	// Redirect to the shared page
+	http.Redirect(w, r, "/view/shared", http.StatusSeeOther)
+}
+
+// mediaPageHandler serves the media.html page
+func mediaPageHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "./media.html")
+}
+
+// mediaListHandler returns a JSON list of all media files in the media directory
+func mediaListHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	mediaDir := filepath.Join(persistentDir, "media")
+	
+	// Create media directory if it doesn't exist
+	if err := os.MkdirAll(mediaDir, 0755); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	files, err := os.ReadDir(mediaDir)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	
-	var images []string
+	var mediaFiles []map[string]string
 	for _, file := range files {
 		if !file.IsDir() {
-			// Only include image files
 			name := file.Name()
 			ext := strings.ToLower(filepath.Ext(name))
-			if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp" {
-				images = append(images, name)
+			mediaType := "image"
+			
+			// Check if it's a video
+			if ext == ".mp4" || ext == ".webm" || ext == ".mov" || ext == ".avi" || ext == ".mkv" || ext == ".m4v" {
+				mediaType = "video"
 			}
+			
+			mediaFiles = append(mediaFiles, map[string]string{
+				"name": name,
+				"type": mediaType,
+			})
 		}
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"images":["%s"]}`, strings.Join(images, `","`))
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"media": mediaFiles,
+	})
 }
 
-// photosDeleteHandler handles deletion of photos (requires authentication)
-func photosDeleteHandler(w http.ResponseWriter, r *http.Request) {
+// mediaDeleteHandler handles deletion of media (requires authentication)
+func mediaDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	
 	if r.Method != "POST" {
@@ -753,7 +878,7 @@ func photosDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// Delete files
-	photosDir := filepath.Join(persistentDir, "photos")
+	mediaDir := filepath.Join(persistentDir, "media")
 	for _, filename := range req.Files {
 		// Security: prevent path traversal
 		if strings.Contains(filename, "..") || strings.Contains(filename, "/") {
@@ -761,7 +886,7 @@ func photosDeleteHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
-		filePath := filepath.Join(photosDir, filename)
+		filePath := filepath.Join(mediaDir, filename)
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 			log.Printf("Error deleting %s: %v", filename, err)
 		}
@@ -777,9 +902,9 @@ func main() {
     log.Fatal(err)
   }
   
-  // Create photos directory in persistent storage if it doesn't exist
-  photosDir := filepath.Join(persistentDir, "photos")
-  if err := os.MkdirAll(photosDir, 0755); err != nil {
+  // Create media directory in persistent storage if it doesn't exist
+  mediaDir := filepath.Join(persistentDir, "media")
+  if err := os.MkdirAll(mediaDir, 0755); err != nil {
     log.Fatal(err)
   }
 
@@ -794,13 +919,19 @@ func main() {
   iconServer := http.FileServer(http.Dir("./icon"))
   http.Handle("/icon/", http.StripPrefix("/icon/", corsMiddleware(iconServer)))
   
-  // Set up static file server for photos (from persistent storage)
-  photosFileServer := http.FileServer(http.Dir(photosDir))
-  http.Handle("/photos/", http.StripPrefix("/photos/", corsMiddleware(photosFileServer)))
+  // Set up static file server for media (from persistent storage)
+  mediaFileServer := http.FileServer(http.Dir(mediaDir))
+  http.Handle("/media/", http.StripPrefix("/media/", corsMiddleware(mediaFileServer)))
   
   // Serve favicon.ico directly from the icon directory
   http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
     http.ServeFile(w, r, "./icon/favicon.ico")
+  })
+  
+  // Serve manifest.json for PWA and Share Target API
+  http.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    http.ServeFile(w, r, "./manifest.json")
   })
 
   // Root handler
@@ -808,12 +939,13 @@ func main() {
 
   // API endpoints
   http.HandleFunc("/api/page", apiGetPageHandler)
-  http.HandleFunc("/api/photos/list", photosListHandler)
-  http.HandleFunc("/api/photos/upload", photosUploadHandler)
-  http.HandleFunc("/api/photos/delete", photosDeleteHandler)
+  http.HandleFunc("/api/media/list", mediaListHandler)
+  http.HandleFunc("/api/media/upload", mediaUploadHandler)
+  http.HandleFunc("/api/media/delete", mediaDeleteHandler)
+  http.HandleFunc("/api/share", shareTargetHandler)
 
-  // Photos page
-  http.HandleFunc("/photos", photosPageHandler)
+  // Media page
+  http.HandleFunc("/media", mediaPageHandler)
 
   // Traditional wiki endpoints
   http.HandleFunc("/view/", makeHandler(viewHandler))

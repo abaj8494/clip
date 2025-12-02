@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Photos - clip.abaj.ai</title>
+    <title>Media - clip.abaj.ai</title>
     <style>
         * {
             margin: 0;
@@ -345,7 +345,7 @@
     </style>
 </head>
 <body>
-    <h1>Photos</h1>
+    <h1>Media</h1>
     
     <div style="margin-bottom: 15px;">
         <a href="/" style="text-decoration: none; color: #0366d6;">Home</a>
@@ -378,7 +378,11 @@
         <button class="preview-arrow preview-arrow-left" id="previewPrev">‹</button>
         <button class="preview-arrow preview-arrow-right" id="previewNext">›</button>
         <div class="preview-content">
-            <img id="previewImage" src="" alt="Preview">
+            <img id="previewImage" src="" alt="Preview" style="display: none;">
+            <video id="previewVideo" controls style="display: none; max-width: 100%; max-height: 80vh;">
+                <source id="previewVideoSource" src="" type="">
+                Your browser does not support video playback.
+            </video>
         </div>
     </div>
 
@@ -419,77 +423,97 @@
         const passwordInput = document.getElementById('password');
         const loginError = document.getElementById('loginError');
         
-        let allImages = [];
-        let filteredImages = [];
+        let allMedia = [];
+        let filteredMedia = [];
         let isAdminMode = localStorage.getItem('clipAdminMode') === 'true';
-        let currentPreviewImage = '';
+        let currentPreviewItem = null;
         
         // Restore admin state from localStorage
         if (isAdminMode) {
             document.body.classList.add('admin-mode');
         }
         
-        // Fetch images from server
-        async function fetchImages() {
+        // Fetch media from server
+        async function fetchMedia() {
             try {
-                const response = await fetch('/api/photos/list');
+                const response = await fetch('/api/media/list');
                 const data = await response.json();
-                allImages = data.images || [];
-                filteredImages = [...allImages];
+                allMedia = data.media || [];
+                filteredMedia = [...allMedia];
                 renderGallery();
             } catch (error) {
-                console.error('Error fetching images:', error);
-                loading.innerHTML = 'Error loading images';
+                console.error('Error fetching media:', error);
+                loading.innerHTML = 'Error loading media';
             }
         }
         
         function renderGallery() {
             gallery.innerHTML = '';
             
-            if (filteredImages.length === 0 && allImages.length === 0) {
+            if (filteredMedia.length === 0 && allMedia.length === 0) {
                 loading.style.display = 'block';
-                loading.innerHTML = 'No images found.';
-                countEl.textContent = '0 images';
+                loading.innerHTML = 'No media found.';
+                countEl.textContent = '0 items';
                 return;
             }
             
-            if (filteredImages.length === 0) {
+            if (filteredMedia.length === 0) {
                 loading.style.display = 'block';
-                loading.innerHTML = 'No images match your filter.';
-                countEl.textContent = `0 of ${allImages.length} images`;
+                loading.innerHTML = 'No media match your filter.';
+                countEl.textContent = `0 of ${allMedia.length} items`;
                 return;
             }
             
             loading.style.display = 'none';
-            countEl.textContent = filteredImages.length === allImages.length 
-                ? `${filteredImages.length} images` 
-                : `${filteredImages.length} of ${allImages.length} images`;
+            countEl.textContent = filteredMedia.length === allMedia.length 
+                ? `${filteredMedia.length} items` 
+                : `${filteredMedia.length} of ${allMedia.length} items`;
             
-            filteredImages.forEach(filename => {
+            filteredMedia.forEach(mediaItem => {
                 const item = document.createElement('div');
                 item.className = 'image-item';
-                item.dataset.filename = filename;
+                item.dataset.filename = mediaItem.name;
+                item.dataset.type = mediaItem.type;
                 
                 const checkbox = document.createElement('div');
                 checkbox.className = 'checkbox-wrapper';
-                checkbox.innerHTML = `<input type="checkbox" class="image-checkbox" value="${filename}">`;
+                checkbox.innerHTML = `<input type="checkbox" class="image-checkbox" value="${mediaItem.name}">`;
                 
-                const imgWrapper = document.createElement('div');
-                imgWrapper.className = 'image-wrapper';
-                imgWrapper.onclick = () => openPreview(filename);
+                const mediaWrapper = document.createElement('div');
+                mediaWrapper.className = 'image-wrapper';
+                mediaWrapper.onclick = () => openPreview(mediaItem);
                 
-                const img = document.createElement('img');
-                img.src = `/photos/${filename}`;
-                img.alt = filename;
-                img.loading = 'lazy';
+                // Use video thumbnail or image
+                if (mediaItem.type === 'video') {
+                    const video = document.createElement('video');
+                    video.src = `/media/${mediaItem.name}`;
+                    video.muted = true;
+                    video.loading = 'lazy';
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'cover';
+                    mediaWrapper.appendChild(video);
+                    
+                    // Add video icon overlay
+                    const playIcon = document.createElement('div');
+                    playIcon.innerHTML = '▶';
+                    playIcon.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:white;text-shadow:0 2px 4px rgba(0,0,0,0.8);pointer-events:none;';
+                    mediaWrapper.appendChild(playIcon);
+                } else {
+                    const img = document.createElement('img');
+                    img.src = `/media/${mediaItem.name}`;
+                    img.alt = mediaItem.name;
+                    img.loading = 'lazy';
+                    mediaWrapper.appendChild(img);
+                }
                 
                 const info = document.createElement('div');
                 info.className = 'image-info';
-                info.innerHTML = `<span class="image-name">${filename}</span>`;
+                const typeLabel = mediaItem.type === 'video' ? '🎥 ' : '';
+                info.innerHTML = `<span class="image-name">${typeLabel}${mediaItem.name}</span>`;
                 
-                imgWrapper.appendChild(img);
                 item.appendChild(checkbox);
-                item.appendChild(imgWrapper);
+                item.appendChild(mediaWrapper);
                 item.appendChild(info);
                 gallery.appendChild(item);
             });
@@ -510,22 +534,51 @@
         // Search functionality
         searchInput.addEventListener('input', (e) => {
             const query = e.target.value.toLowerCase();
-            filteredImages = allImages.filter(img => 
-                img.toLowerCase().includes(query)
+            filteredMedia = allMedia.filter(item => 
+                item.name.toLowerCase().includes(query)
             );
             renderGallery();
         });
         
         // Preview functionality
-        function openPreview(filename) {
-            currentPreviewImage = filename;
-            previewImage.src = `/photos/${filename}`;
+        function openPreview(mediaItem) {
+            currentPreviewItem = mediaItem;
+            
+            const previewImage = document.getElementById('previewImage');
+            const previewVideo = document.getElementById('previewVideo');
+            const previewVideoSource = document.getElementById('previewVideoSource');
+            
+            if (mediaItem.type === 'video') {
+                // Show video
+                previewImage.style.display = 'none';
+                previewVideo.style.display = 'block';
+                
+                const ext = mediaItem.name.split('.').pop().toLowerCase();
+                const mimeTypes = {
+                    'mp4': 'video/mp4',
+                    'webm': 'video/webm',
+                    'mov': 'video/quicktime',
+                    'avi': 'video/x-msvideo',
+                    'mkv': 'video/x-matroska',
+                    'm4v': 'video/x-m4v'
+                };
+                
+                previewVideoSource.src = `/media/${mediaItem.name}`;
+                previewVideoSource.type = mimeTypes[ext] || 'video/mp4';
+                previewVideo.load();
+            } else {
+                // Show image
+                previewVideo.style.display = 'none';
+                previewImage.style.display = 'block';
+                previewImage.src = `/media/${mediaItem.name}`;
+            }
+            
             previewOverlay.classList.add('active');
             updateArrowButtons();
         }
         
         function updateArrowButtons() {
-            const currentIndex = filteredImages.indexOf(currentPreviewImage);
+            const currentIndex = filteredMedia.findIndex(m => m.name === currentPreviewItem.name);
             const prevBtn = document.getElementById('previewPrev');
             const nextBtn = document.getElementById('previewNext');
             
@@ -534,11 +587,11 @@
         }
         
         function navigatePreview(direction) {
-            const currentIndex = filteredImages.indexOf(currentPreviewImage);
+            const currentIndex = filteredMedia.findIndex(m => m.name === currentPreviewItem.name);
             let newIndex = currentIndex + direction;
             
-            if (newIndex >= 0 && newIndex < filteredImages.length) {
-                openPreview(filteredImages[newIndex]);
+            if (newIndex >= 0 && newIndex < filteredMedia.length) {
+                openPreview(filteredMedia[newIndex]);
             }
         }
         
@@ -571,8 +624,8 @@
         
         previewDownload.onclick = () => {
             const link = document.createElement('a');
-            link.href = `/photos/${currentPreviewImage}`;
-            link.download = currentPreviewImage;
+            link.href = `/media/${currentPreviewItem.name}`;
+            link.download = currentPreviewItem.name;
             link.click();
         };
         
@@ -594,14 +647,14 @@
                     formData.append('files', file);
                 }
                 
-                const response = await fetch('/api/photos/upload', {
+                const response = await fetch('/api/media/upload', {
                     method: 'POST',
                     body: formData
                 });
                 
                 if (response.ok) {
                     alert(`${files.length} file(s) uploaded successfully!`);
-                    fetchImages(); // Refresh gallery
+                    fetchMedia(); // Refresh gallery
                 } else {
                     const error = await response.text();
                     alert('Upload failed: ' + error);
@@ -618,8 +671,8 @@
         
         // Download all functionality
         downloadAllBtn.onclick = async () => {
-            if (allImages.length === 0) {
-                alert('No images to download');
+            if (allMedia.length === 0) {
+                alert('No media to download');
                 return;
             }
             
@@ -628,10 +681,10 @@
             
             try {
                 const zip = new JSZip();
-                const promises = allImages.map(async (filename) => {
-                    const response = await fetch(`/photos/${filename}`);
+                const promises = allMedia.map(async (mediaItem) => {
+                    const response = await fetch(`/media/${mediaItem.name}`);
                     const blob = await response.blob();
-                    zip.file(filename, blob);
+                    zip.file(mediaItem.name, blob);
                 });
                 
                 await Promise.all(promises);
@@ -639,7 +692,7 @@
                 const content = await zip.generateAsync({type: 'blob'});
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(content);
-                link.download = 'photos.zip';
+                link.download = 'media.zip';
                 link.click();
             } catch (error) {
                 console.error('Error creating zip:', error);
@@ -713,7 +766,7 @@
             deleteSelectedBtn.textContent = 'Deleting...';
             
             try {
-                const response = await fetch('/api/photos/delete', {
+                const response = await fetch('/api/media/delete', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -745,7 +798,7 @@
         };
         
         // Initialize
-        fetchImages();
+        fetchMedia();
     </script>
 </body>
 </html>
