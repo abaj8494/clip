@@ -287,6 +287,19 @@
             right: 20px;
         }
         
+        .selection-controls {
+            display: none;
+            gap: 10px;
+        }
+        
+        body.select-mode .selection-controls {
+            display: flex;
+        }
+        
+        body.select-mode .checkbox-wrapper {
+            display: block;
+        }
+        
         .admin-controls {
             display: none;
             gap: 10px;
@@ -359,9 +372,16 @@
         
         <input type="file" id="fileInput" multiple accept="image/*">
         <button class="btn btn-upload" id="uploadBtn">Upload</button>
-        <button class="btn btn-download" id="downloadAllBtn">Download All</button>
+        <button class="btn btn-download" id="selectBtn">Select</button>
         <button class="btn btn-admin" id="adminBtn">Admin</button>
         <button class="btn" id="viewModeBtn" title="Change view mode">⊞</button>
+        
+        <div class="selection-controls">
+            <button class="btn" id="selectAllBtn">Select All</button>
+            <button class="btn" id="deselectAllBtn">Deselect All</button>
+            <button class="btn btn-download" id="downloadSelectedBtn">Download Selected</button>
+            <button class="btn" id="exitSelectBtn">Exit Select</button>
+        </div>
         
         <div class="admin-controls">
             <button class="btn btn-delete" id="deleteSelectedBtn">Delete Selected</button>
@@ -409,7 +429,11 @@
         const countEl = document.getElementById('count');
         const uploadBtn = document.getElementById('uploadBtn');
         const fileInput = document.getElementById('fileInput');
-        const downloadAllBtn = document.getElementById('downloadAllBtn');
+        const selectBtn = document.getElementById('selectBtn');
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const deselectAllBtn = document.getElementById('deselectAllBtn');
+        const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
+        const exitSelectBtn = document.getElementById('exitSelectBtn');
         const adminBtn = document.getElementById('adminBtn');
         const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
         const exitAdminBtn = document.getElementById('exitAdminBtn');
@@ -427,6 +451,7 @@
         let allMedia = [];
         let filteredMedia = [];
         let isAdminMode = localStorage.getItem('clipAdminMode') === 'true';
+        let isSelectMode = false;
         let currentPreviewItem = null;
         let viewMode = localStorage.getItem('mediaViewMode') || 'medium'; // small, medium, large, list
         
@@ -715,21 +740,59 @@
         };
         
         // Download all functionality
-        downloadAllBtn.onclick = async () => {
-            if (allMedia.length === 0) {
-                alert('No media to download');
+        // Select mode toggle
+        selectBtn.onclick = () => {
+            isSelectMode = true;
+            document.body.classList.add('select-mode');
+            renderGallery(); // Re-render to show checkboxes
+        };
+        
+        exitSelectBtn.onclick = () => {
+            isSelectMode = false;
+            document.body.classList.remove('select-mode');
+            // Uncheck all
+            document.querySelectorAll('.image-checkbox').forEach(cb => {
+                cb.checked = false;
+                const item = cb.closest('.image-item');
+                if (item) item.classList.remove('selected');
+            });
+            renderGallery(); // Re-render to hide checkboxes
+        };
+        
+        selectAllBtn.onclick = () => {
+            document.querySelectorAll('.image-checkbox').forEach(cb => {
+                cb.checked = true;
+                const item = cb.closest('.image-item');
+                if (item) item.classList.add('selected');
+            });
+        };
+        
+        deselectAllBtn.onclick = () => {
+            document.querySelectorAll('.image-checkbox').forEach(cb => {
+                cb.checked = false;
+                const item = cb.closest('.image-item');
+                if (item) item.classList.remove('selected');
+            });
+        };
+        
+        downloadSelectedBtn.onclick = async () => {
+            const selected = Array.from(document.querySelectorAll('.image-checkbox:checked'))
+                .map(cb => cb.value);
+            
+            if (selected.length === 0) {
+                alert('No items selected');
                 return;
             }
             
-            downloadAllBtn.disabled = true;
-            downloadAllBtn.textContent = 'Downloading...';
+            downloadSelectedBtn.disabled = true;
+            downloadSelectedBtn.textContent = 'Downloading...';
             
             try {
                 const zip = new JSZip();
-                const promises = allMedia.map(async (mediaItem) => {
-                    const response = await fetch(`/media/${mediaItem.name}`);
+                const promises = selected.map(async (filename) => {
+                    const response = await fetch(`/media/${filename}`);
                     const blob = await response.blob();
-                    zip.file(mediaItem.name, blob);
+                    zip.file(filename, blob);
                 });
                 
                 await Promise.all(promises);
@@ -737,14 +800,14 @@
                 const content = await zip.generateAsync({type: 'blob'});
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(content);
-                link.download = 'media.zip';
+                link.download = `media-${selected.length}-items.zip`;
                 link.click();
             } catch (error) {
                 console.error('Error creating zip:', error);
                 alert('Error downloading images');
             } finally {
-                downloadAllBtn.disabled = false;
-                downloadAllBtn.textContent = 'Download All';
+                downloadSelectedBtn.disabled = false;
+                downloadSelectedBtn.textContent = 'Download Selected';
             }
         };
         
