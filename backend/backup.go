@@ -18,39 +18,11 @@ func init() {
 
 // BackupWikiFiles copies all wiki text files and uploaded files to the persistent storage directory
 func BackupWikiFiles() {
-	// Create the persistent directory if it doesn't exist
-	if err := os.MkdirAll(persistentDir, 0755); err != nil {
-		log.Printf("Error creating persistent directory: %v", err)
-		return
-	}
-
-	// 1. Backup text files and .files.txt metadata files
-	// Get all txt files in the current directory
-	textFiles, err := filepath.Glob("*.txt")
-	if err != nil {
-		log.Printf("Error finding wiki text files: %v", err)
-		return
-	}
-
-	// Copy each file to the persistent directory
-	for _, file := range textFiles {
-		// Read the source file
-		content, err := os.ReadFile(file)
-		if err != nil {
-			log.Printf("Error reading file %s: %v", file, err)
-			continue
-		}
-
-		// Write to the destination file
-		destPath := filepath.Join(persistentDir, file)
-		if err := os.WriteFile(destPath, content, 0600); err != nil {
-			log.Printf("Error writing to persistent storage %s: %v", destPath, err)
-		} else {
-			log.Printf("Backed up %s to %s", file, destPath)
-		}
-	}
-
-	// 2. Backup uploaded files
+	// Since we're now saving directly to persistentDir, we don't need to backup text files
+	// The files are already in the persistent directory
+	// We only need to backup uploaded files from ./files to /app/persistence/files
+	
+	// Backup uploaded files
 	if err := backupUploadedFiles(); err != nil {
 		log.Printf("Error backing up uploaded files: %v", err)
 	}

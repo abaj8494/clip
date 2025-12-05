@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -65,6 +66,17 @@ func getPageLock(pageName string) *sync.Mutex {
 		pageLocks[pageName] = &sync.Mutex{}
 	}
 	return pageLocks[pageName]
+}
+
+// sanitizeFilename decodes URL-encoded filenames to get the actual filename
+func sanitizeFilename(filename string) string {
+	// Try to decode the filename in case it's URL-encoded
+	decoded, err := url.QueryUnescape(filename)
+	if err != nil {
+		// If decoding fails, return the original filename
+		return filename
+	}
+	return decoded
 }
 
 // enableCORS adds CORS headers to allow requests from the frontend
@@ -490,8 +502,11 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, title string) {
     }
     defer file.Close()
 
+    // Sanitize filename to handle URL-encoded names
+    cleanFilename := sanitizeFilename(fileHeader.Filename)
+
     // Create file in the server
-    filePath := filepath.Join(pageDirPath, fileHeader.Filename)
+    filePath := filepath.Join(pageDirPath, cleanFilename)
     dst, err := os.Create(filePath)
     if err != nil {
       http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -508,14 +523,14 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, title string) {
     // Check if file is already in the list
     found := false
     for _, f := range p.Files {
-      if f == fileHeader.Filename {
+      if f == cleanFilename {
         found = true
         break
       }
     }
     if !found {
-      p.Files = append(p.Files, fileHeader.Filename)
-      uploadedFiles = append(uploadedFiles, fileHeader.Filename)
+      p.Files = append(p.Files, cleanFilename)
+      uploadedFiles = append(uploadedFiles, cleanFilename)
     }
   }
 
@@ -575,6 +590,13 @@ func (p *Page) save() error {
   err := os.WriteFile(filename, p.Body, 0600)
   if err != nil {
     return err
+  }
+  
+  // Explicitly update modification time to ensure proper sorting
+  now := time.Now()
+  err = os.Chtimes(filename, now, now)
+  if err != nil {
+    log.Printf("Warning: Could not update modification time for %s: %v", filename, err)
   }
   
   // Write files list if there are any
@@ -708,8 +730,11 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
           }
           defer file.Close()
           
+          // Sanitize filename to handle URL-encoded names
+          cleanFilename := sanitizeFilename(fileHeader.Filename)
+          
           // Create destination file
-          destPath := filepath.Join(pageDirPath, fileHeader.Filename)
+          destPath := filepath.Join(pageDirPath, cleanFilename)
           dest, err := os.Create(destPath)
           if err != nil {
             log.Printf("Error creating file: %v", err)
@@ -723,8 +748,8 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
             continue
           }
           
-          uploadedFiles = append(uploadedFiles, fileHeader.Filename)
-          log.Printf("Uploaded %s to curl", fileHeader.Filename)
+          uploadedFiles = append(uploadedFiles, cleanFilename)
+          log.Printf("Uploaded %s to curl", cleanFilename)
         }
       }
       
@@ -902,8 +927,11 @@ func mediaUploadHandler(w http.ResponseWriter, r *http.Request) {
 	
 	uploadedCount := 0
 	for _, fileHeader := range files {
+		// Sanitize filename to handle URL-encoded names
+		cleanFilename := sanitizeFilename(fileHeader.Filename)
+		
 		// Validate file type (images and videos)
-		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		ext := strings.ToLower(filepath.Ext(cleanFilename))
 		validExtensions := map[string]bool{
 			".jpg": true, ".jpeg": true, ".png": true,
 			".gif": true, ".webp": true, ".bmp": true,
@@ -924,7 +952,7 @@ func mediaUploadHandler(w http.ResponseWriter, r *http.Request) {
 		defer file.Close()
 		
 		// Create destination file
-		destPath := filepath.Join(mediaDir, fileHeader.Filename)
+		destPath := filepath.Join(mediaDir, cleanFilename)
 		dest, err := os.Create(destPath)
 		if err != nil {
 			log.Printf("Error creating destination file: %v", err)
@@ -952,15 +980,15 @@ func mediaUploadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			
 			for _, s := range sizes {
-				if err := generateThumbnail(destPath, fileHeader.Filename, s.size, s.dir); err != nil {
-					log.Printf("Warning: Could not generate %s thumbnail for %s: %v", s.name, fileHeader.Filename, err)
+				if err := generateThumbnail(destPath, cleanFilename, s.size, s.dir); err != nil {
+					log.Printf("Warning: Could not generate %s thumbnail for %s: %v", s.name, cleanFilename, err)
 				}
 			}
-			log.Printf("Generated all thumbnails for %s", fileHeader.Filename)
+			log.Printf("Generated all thumbnails for %s", cleanFilename)
 		}
 		
 		uploadedCount++
-		log.Printf("Uploaded media: %s", fileHeader.Filename)
+		log.Printf("Uploaded media: %s", cleanFilename)
 	}
 	
 	if uploadedCount == 0 {
@@ -1068,8 +1096,11 @@ func shareTargetHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			defer file.Close()
 			
+			// Sanitize filename to handle URL-encoded names
+			cleanFilename := sanitizeFilename(fileHeader.Filename)
+			
 			// Create destination file
-			destPath := filepath.Join(pageDirPath, fileHeader.Filename)
+			destPath := filepath.Join(pageDirPath, cleanFilename)
 			dest, err := os.Create(destPath)
 			if err != nil {
 				log.Printf("Error creating file: %v", err)
@@ -1083,8 +1114,8 @@ func shareTargetHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			
-			uploadedFiles = append(uploadedFiles, fileHeader.Filename)
-			log.Printf("Shared file uploaded: %s", fileHeader.Filename)
+			uploadedFiles = append(uploadedFiles, cleanFilename)
+			log.Printf("Shared file uploaded: %s", cleanFilename)
 		}
 	}
 	

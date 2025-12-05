@@ -183,7 +183,7 @@
 
         <div class="content" id="content">
         <button class="copy-button" onclick="copyContent()">Copy</button>
-        <div id="contentBody" style="display: none;">{{.Body}}</div>
+        <div id="contentBody" style="display: none;">{{printf "%s" .Body}}</div>
     </div>
 
     {{if .Files}}
@@ -226,15 +226,17 @@
                     contentDiv.classList.add('markdown-rendered');
                 } else {
                     // Fallback to plain text
+                    var copyButton = document.querySelector('.copy-button');
                     contentDiv.textContent = '';
-                    contentDiv.appendChild(document.querySelector('.copy-button'));
+                    contentDiv.appendChild(copyButton);
                     contentDiv.appendChild(document.createTextNode(rawText));
                     contentDiv.classList.add('plaintext');
                 }
             } catch (e) {
                 // If markdown parsing fails, show plain text
+                var copyButton = document.querySelector('.copy-button');
                 contentDiv.textContent = '';
-                contentDiv.appendChild(document.querySelector('.copy-button'));
+                contentDiv.appendChild(copyButton);
                 contentDiv.appendChild(document.createTextNode(rawText));
                 contentDiv.classList.add('plaintext');
             }
